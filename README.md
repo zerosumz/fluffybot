@@ -1,5 +1,7 @@
 # Fluffybot - AI Teammate for GitLab
 
+![](fluffybot.jpg)
+
 GitLab 이슈에서 `@fluffybot`을 멘션하면 Claude Code CLI를 실행하여 자동으로 작업을 수행하는 AI Teammate.
 
 ## Features
