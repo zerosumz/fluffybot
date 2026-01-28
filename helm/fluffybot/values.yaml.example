@@ -1,0 +1,104 @@
+# Fluffybot Helm Chart Values - Example Configuration
+# Copy this file to values.yaml and customize for your environment
+
+# GitLab 설정
+gitlab:
+  # GitLab 인스턴스 URL (필수)
+  url: https://gitlab.example.com
+  # Fluffybot 사용자명 (필수)
+  botUsername: fluffybot
+
+# Container 이미지 설정
+image:
+  # 이미지 레지스트리 경로 (필수)
+  registry: registry.example.com/your-org/fluffybot
+  webhookTag: latest
+  workerTag: latest
+  pullPolicy: Always
+  # Private registry 사용 시 설정 (선택)
+  pullSecret: ""
+
+# Namespace
+namespace: gitlab
+
+# Webhook 서비스 설정
+webhook:
+  name: fluffybot-webhook
+  replicas: 1
+  revisionHistoryLimit: 3
+
+  # 리소스 제한
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+  # Health check 설정
+  livenessProbe:
+    initialDelaySeconds: 65
+    periodSeconds: 10
+    failureThreshold: 5
+
+  readinessProbe:
+    initialDelaySeconds: 50
+    periodSeconds: 5
+    failureThreshold: 5
+
+  # Service 설정
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+# Worker Job 기본 설정
+worker:
+  timeoutMinutes: 30
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 0
+
+  # Worker Job 리소스
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+# Ingress 설정
+ingress:
+  enabled: true
+  className: nginx
+  # Ingress 호스트명 (필수)
+  host: fluffybot.example.com
+
+  # TLS 설정
+  tls:
+    enabled: true
+    # secretName을 비워두면 cert-manager가 자동 생성
+    # 형식: {ingress-name}-tls
+    secretName: ""
+
+  # Annotations
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+
+# Secrets
+# 주의: 실제 시크릿 값은 여기에 넣지 말고 kubectl로 별도 생성하세요
+# kubectl create secret generic fluffybot-secrets \
+#   --from-literal=gitlab-token=glpat-xxxxxxxxxxxxxxxxxxxx \
+#   --from-literal=anthropic-api-key=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+secrets:
+  # 기존 시크릿 사용 (필수)
+  existingSecret: fluffybot-secrets
+  # 키 이름
+  gitlabTokenKey: gitlab-token
+  anthropicApiKeyKey: anthropic-api-key
+
+# RBAC 설정
+rbac:
+  create: true
+  serviceAccountName: fluffybot-webhook

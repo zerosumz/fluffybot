@@ -1,0 +1,61 @@
+🤖 Fluffybot has been installed successfully!
+
+✅ Deployment Details:
+  - Release Name: {{ .Release.Name }}
+  - Namespace: {{ .Values.namespace }}
+  - Webhook Image: {{ include "fluffybot.webhookImage" . }}
+  - Worker Image: {{ include "fluffybot.workerImage" . }}
+
+🌐 Access Information:
+{{- if .Values.ingress.enabled }}
+  URL: https://{{ .Values.ingress.host }}
+
+  GitLab Webhook URL:
+  https://{{ .Values.ingress.host }}/webhook/gitlab
+{{- else }}
+  Service: {{ .Values.webhook.name }}.{{ .Values.namespace }}.svc.cluster.local
+  Port: {{ .Values.webhook.service.port }}
+{{- end }}
+
+📋 Next Steps:
+
+1. Verify the deployment:
+   kubectl get all -n {{ .Values.namespace }} -l app={{ .Values.webhook.name }}
+
+2. Check webhook logs:
+   kubectl logs -n {{ .Values.namespace }} -l app={{ .Values.webhook.name }} -f
+
+3. Configure GitLab webhook:
+   - Go to your GitLab project → Settings → Webhooks
+   - URL: https://{{ .Values.ingress.host }}/webhook/gitlab
+   - Trigger: Issue events
+   - Save and test
+
+4. Create a CLAUDE.md file in your GitLab project root
+
+5. Create an issue and assign @{{ .Values.gitlab.botUsername }}
+
+📊 Monitor Jobs:
+
+  # List all worker jobs
+  kubectl get jobs -n {{ .Values.namespace }} -l app=fluffybot-worker
+
+  # Check specific job status
+  curl https://{{ .Values.ingress.host }}/jobs
+
+  # View job logs
+  kubectl logs -n {{ .Values.namespace }} job/fluffybot-worker-<issue-iid>-<timestamp>
+
+🔧 Troubleshooting:
+
+  # Check webhook health
+  curl https://{{ .Values.ingress.host }}/actuator/health
+
+  # View recent events
+  kubectl get events -n {{ .Values.namespace }} --sort-by='.lastTimestamp'
+
+  # Restart webhook
+  kubectl rollout restart deployment/{{ .Values.webhook.name }} -n {{ .Values.namespace }}
+
+For more information, visit:
+{{ .Chart.Home }}

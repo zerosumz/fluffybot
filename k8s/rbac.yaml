@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluffybot-webhook
+  namespace: gitlab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fluffybot-pod-manager
+  namespace: gitlab
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fluffybot-pod-manager-binding
+  namespace: gitlab
+subjects:
+  - kind: ServiceAccount
+    name: fluffybot-webhook
+    namespace: gitlab
+roleRef:
+  kind: Role
+  name: fluffybot-pod-manager
+  apiGroup: rbac.authorization.k8s.io

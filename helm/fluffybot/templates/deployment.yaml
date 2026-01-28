@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.webhook.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "fluffybot.labels" . | nindent 4 }}
+    app: {{ .Values.webhook.name }}
+spec:
+  replicas: {{ .Values.webhook.replicas }}
+  revisionHistoryLimit: {{ .Values.webhook.revisionHistoryLimit | default 3 }}
+  selector:
+    matchLabels:
+      {{- include "fluffybot.webhook.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluffybot.webhook.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "fluffybot.serviceAccountName" . }}
+      {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.image.pullSecret }}
+      {{- end }}
+      containers:
+        - name: webhook
+          image: {{ include "fluffybot.webhookImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.webhook.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: GITLAB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: {{ .Values.secrets.gitlabTokenKey }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: {{ .Values.secrets.anthropicApiKeyKey }}
+          resources:
+            {{- toYaml .Values.webhook.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: {{ .Values.webhook.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.webhook.livenessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.webhook.livenessProbe.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: {{ .Values.webhook.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.webhook.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.webhook.readinessProbe.failureThreshold }}

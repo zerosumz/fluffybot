@@ -1,0 +1,47 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: fluffybot-webhook
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+fluffybot:
+  gitlab:
+    url: ${GITLAB_URL}
+    token: ${GITLAB_TOKEN}
+    bot-username: ${GITLAB_BOT_USERNAME:fluffybot}
+  worker:
+    namespace: ${WORKER_NAMESPACE:gitlab}
+    image: ${WORKER_IMAGE}
+    anthropic-api-key: ${ANTHROPIC_API_KEY}
+    timeout-minutes: 30
+    cpu-request: 500m
+    cpu-limit: "2"
+    memory-request: 2Gi
+    memory-limit: 4Gi
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY}
+    api-url: https://api.anthropic.com
+    model: claude-sonnet-4-20250514
+    max-tokens: 1024
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    root: INFO
+    com.esc.fluffybot: DEBUG
+    io.fabric8.kubernetes: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
