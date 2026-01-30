@@ -68,6 +68,11 @@ worker:
       cpu: "2"
       memory: 4Gi
 
+# Anthropic API 설정
+anthropic:
+  # Claude 모델 설정 (선택, 기본값: claude-sonnet-4-20250514)
+  model: claude-sonnet-4-20250514
+
 # Ingress 설정
 ingress:
   enabled: true
