@@ -86,9 +86,12 @@ helm install fluffybot ./helm/fluffybot -n gitlab
 
 **Wiki**: https://gitlab.esc-bot.com/esc/fluffybot/-/wikis/home
 
-- Architecture - 시스템 아키텍처
-- Development-Guide - 개발 가이드
-- Deployment - 배포 방법
-- API-Reference - API 문서
-- Troubleshooting - 문제 해결
-- Recent-Changes - 최근 변경사항
+**현재 위키 페이지**:
+- Home - 프로젝트 개요 및 시작 가이드
+- Architecture - 시스템 아키텍처 상세 설명
+- Recent-Changes - 최근 변경사항 (자동 업데이트)
+- Wiki-Management - 위키 관리 가이드
+
+**Wiki 구조**:
+- 상세한 위키 구조 및 관리 방법은 `WIKI_ORGANIZATION.md` 참고
+- README에서 참조하는 일부 페이지(Development-Guide, Deployment, API-Reference, Troubleshooting)는 생성 권장

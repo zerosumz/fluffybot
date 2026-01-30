@@ -334,13 +334,14 @@ ingress:
 
 더 자세한 정보는 프로젝트 위키를 참고하세요:
 
+### 📚 현재 위키 페이지
 - **[Home](https://gitlab.esc-bot.com/esc/fluffybot/-/wikis/home)** - 프로젝트 개요 및 시작 가이드
 - **[Architecture](https://gitlab.esc-bot.com/esc/fluffybot/-/wikis/Architecture)** - 시스템 아키텍처 상세 설명
-- **[Development-Guide](https://gitlab.esc-bot.com/esc/fluffybot/-/wikis/Development-Guide)** - 개발 환경 설정
-- **[Deployment](https://gitlab.esc-bot.com/esc/fluffybot/-/wikis/Deployment)** - 배포 방법
-- **[API-Reference](https://gitlab.esc-bot.com/esc/fluffybot/-/wikis/API-Reference)** - API 엔드포인트
-- **[Troubleshooting](https://gitlab.esc-bot.com/esc/fluffybot/-/wikis/Troubleshooting)** - 문제 해결 가이드
-- **[Recent-Changes](https://gitlab.esc-bot.com/esc/fluffybot/-/wikis/Recent-Changes)** - 최근 변경사항
+- **[Recent-Changes](https://gitlab.esc-bot.com/esc/fluffybot/-/wikis/Recent-Changes)** - 최근 변경사항 (자동 업데이트)
+- **[Wiki-Management](https://gitlab.esc-bot.com/esc/fluffybot/-/wikis/Wiki-Management)** - 위키 관리 가이드
+
+### 📋 추가 문서
+- **WIKI_ORGANIZATION.md** - 위키 구조 및 관리 가이드 (저장소 내 파일)
 
 ## Contributing
 
