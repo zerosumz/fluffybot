@@ -187,14 +187,6 @@ public class GitLabWebhookController {
                 ));
             }
 
-            // Only handle MRs created by bot
-            if (!mrPayload.isCreatedByBot()) {
-                log.debug("MR not created by bot, ignoring webhook");
-                return Mono.just(ResponseEntity.ok(
-                    WebhookResponse.ignored("MR not created by bot")
-                ));
-            }
-
             Long projectId = mrPayload.getProjectId();
             Long mrIid = mrPayload.getMrIid();
 
