@@ -71,4 +71,5 @@ public class GitLabWebhookPayload {
         }
         return sb.toString().trim();
     }
+
 }

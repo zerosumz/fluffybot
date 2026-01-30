@@ -70,7 +70,7 @@ public class WorkerService {
             .projectId(payload.getProject().getId())
             .issueIid(payload.getIssueIid())
             .anthropicApiKey(workerProperties.getAnthropicApiKey())
-            .skipMrCreation(payload.hasTaskLabel() || payload.hasNoCodeLabel())
+            .skipMrCreation(false)
             .build();
     }
 
