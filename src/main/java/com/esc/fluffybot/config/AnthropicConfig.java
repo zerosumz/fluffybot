@@ -20,8 +20,8 @@ public class AnthropicConfig {
             AnthropicProperties properties) {
 
         AnthropicChatOptions options = AnthropicChatOptions.builder()
-            .withModel(properties.getModel())
-            .withMaxTokens(properties.getMaxTokens())
+            .model(properties.getModel())
+            .maxTokens(properties.getMaxTokens())
             .build();
 
         return new AnthropicChatModel(anthropicApi, options);

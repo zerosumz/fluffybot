@@ -3,6 +3,7 @@ package com.esc.fluffybot.webhook.handler;
 import com.esc.fluffybot.gitlab.client.GitLabApiClient;
 import com.esc.fluffybot.webhook.dto.GitLabWebhookPayload;
 import com.esc.fluffybot.webhook.dto.MergeRequestHookPayload;
+import com.esc.fluffybot.webhook.dto.ObjectAttributes;
 import com.esc.fluffybot.worker.service.WorkerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
