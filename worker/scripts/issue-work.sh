@@ -35,6 +35,71 @@ gitlab_api() {
         "${GITLAB_API}${endpoint}" 2>/dev/null || echo "{}"
 }
 
+# Claude API를 사용하여 한글 제목을 영문 slug로 변환
+translate_to_slug() {
+    local korean_title="$1"
+
+    # 이미 ASCII만 있는 경우 단순 변환
+    if echo "$korean_title" | grep -qvP '[^\x00-\x7F]'; then
+        echo "$korean_title" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-*//;s/-*$//' | head -c 30
+        return
+    fi
+
+    echo "==> Translating Korean title to English slug via Claude API..." >&2
+
+    local prompt="다음 한글 이슈 제목을 간결한 영문 slug로 변환하세요.
+규칙:
+- 소문자만 사용
+- 단어는 하이픈(-)으로 구분
+- 최대 3-4단어
+- 불필요한 조사 제거
+- 핵심 의미만 추출
+
+예시:
+\"로그인 기능 추가\" -> \"add-login\"
+\"사용자 인증 버그 수정\" -> \"fix-user-auth\"
+\"API 응답 속도 개선\" -> \"improve-api-speed\"
+\"브랜치명 생성 개선\" -> \"improve-branch-naming\"
+
+제목: \"${korean_title}\"
+
+영문 slug만 출력하세요 (설명 없이):"
+
+    local response=$(timeout 15s curl -s --max-time 15 -X POST \
+        -H "anthropic-version: 2023-06-01" \
+        -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "$(jq -n \
+            --arg model "claude-sonnet-4-20250514" \
+            --arg prompt "$prompt" \
+            '{
+                model: $model,
+                max_tokens: 50,
+                messages: [
+                    {
+                        role: "user",
+                        content: $prompt
+                    }
+                ]
+            }')" \
+        "https://api.anthropic.com/v1/messages" 2>/dev/null || echo "{}")
+
+    # 응답에서 slug 추출
+    local slug=$(echo "$response" | jq -r '.content[0].text // ""' 2>/dev/null | \
+        tr '[:upper:]' '[:lower:]' | \
+        tr -cs 'a-z0-9' '-' | \
+        sed 's/^-*//;s/-*$//' | \
+        head -c 30)
+
+    # 변환 실패 시 기본 slug 사용
+    if [ -z "$slug" ] || [ "$slug" = "null" ]; then
+        echo "==> Warning: Claude API translation failed, using fallback" >&2
+        slug="issue-${ISSUE_IID}"
+    fi
+
+    echo "$slug"
+}
+
 # =============================================================================
 # Git 설정
 # =============================================================================
@@ -240,7 +305,12 @@ else
     if echo "$ISSUE_LABELS" | grep -qi "bug"; then
         BRANCH_PREFIX="fix"
     fi
-    BRANCH_NAME="${BRANCH_PREFIX}/${ISSUE_IID}-$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | head -c 30)"
+
+    # Claude API로 한글 제목을 영문 slug로 변환
+    ISSUE_SLUG=$(translate_to_slug "$ISSUE_TITLE")
+    BRANCH_NAME="${BRANCH_PREFIX}/${ISSUE_IID}-${ISSUE_SLUG}"
+
+    echo "==> Creating branch: ${BRANCH_NAME}"
     git checkout -b "$BRANCH_NAME"
     post_comment "🤖 작업을 시작합니다... (새 브랜치: \`${BRANCH_NAME}\`)"
 fi
