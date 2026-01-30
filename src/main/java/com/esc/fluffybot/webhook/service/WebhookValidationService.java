@@ -11,6 +11,11 @@ public class WebhookValidationService {
             return "Not an issue hook";
         }
 
+        // Explicitly reject close actions to prevent triggering on issue closure
+        if (payload.isCloseAction()) {
+            return "Issue is being closed - ignoring";
+        }
+
         if (!payload.isOpenOrUpdate()) {
             return "Issue action is not open or update";
         }

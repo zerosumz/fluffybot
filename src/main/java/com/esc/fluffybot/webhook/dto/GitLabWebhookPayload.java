@@ -28,7 +28,17 @@ public class GitLabWebhookPayload {
             return false;
         }
         String action = objectAttributes.getAction();
+        // Only accept "open" or "update" actions
+        // Explicitly reject "close" and "reopen" to prevent triggering on issue state changes
         return "open".equals(action) || "update".equals(action);
+    }
+
+    public boolean isCloseAction() {
+        if (objectAttributes == null || objectAttributes.getAction() == null) {
+            return false;
+        }
+        String action = objectAttributes.getAction();
+        return "close".equals(action);
     }
 
     public boolean hasAssignee(String username) {
@@ -60,5 +70,21 @@ public class GitLabWebhookPayload {
             sb.append(getIssueDescription());
         }
         return sb.toString().trim();
+    }
+
+    public boolean hasTaskLabel() {
+        if (objectAttributes == null || objectAttributes.getLabels() == null) {
+            return false;
+        }
+        return objectAttributes.getLabels().stream()
+            .anyMatch(label -> "task".equalsIgnoreCase(label));
+    }
+
+    public boolean hasNoCodeLabel() {
+        if (objectAttributes == null || objectAttributes.getLabels() == null) {
+            return false;
+        }
+        return objectAttributes.getLabels().stream()
+            .anyMatch(label -> "no-code".equalsIgnoreCase(label) || "documentation".equalsIgnoreCase(label));
     }
 }

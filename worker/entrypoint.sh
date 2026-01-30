@@ -634,6 +634,27 @@ git push -u origin "${BRANCH_NAME}" || {
     exit 1
 }
 
+# SKIP_MR_CREATION 플래그 확인
+if [ "${SKIP_MR_CREATION}" = "true" ]; then
+    echo "==> Skipping MR creation (SKIP_MR_CREATION=true)"
+
+    COMPLETION_MSG="✅ 작업이 완료되었습니다! (MR 생성 생략)
+
+- **브랜치**: \`${BRANCH_NAME}\`
+- **커밋 수**: ${COMMIT_COUNT}"
+    [ "$TOKEN_USAGE" != "unknown" ] && COMPLETION_MSG="${COMPLETION_MSG}
+- **토큰 사용량**: ${TOKEN_USAGE}"
+    COMPLETION_MSG="${COMPLETION_MSG}
+
+⚠️ 이 이슈는 \`task\` 또는 \`no-code\` 라벨이 있어서 MR을 자동으로 생성하지 않았습니다.
+필요한 경우 수동으로 MR을 생성해주세요."
+
+    post_comment "$COMPLETION_MSG"
+
+    echo "==> Done! (MR creation skipped)"
+    exit 0
+fi
+
 # MR 생성
 echo "==> Creating Merge Request..."
 
