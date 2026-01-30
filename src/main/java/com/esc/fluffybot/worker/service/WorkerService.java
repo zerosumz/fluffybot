@@ -66,6 +66,7 @@ public class WorkerService {
         return WorkerTask.builder()
             .gitlabUrl(gitLabProperties.getUrl())
             .gitlabToken(gitLabProperties.getToken())
+            .botUsername(gitLabProperties.getBotUsername())
             .projectPath(payload.getProject().getPathWithNamespace())
             .projectId(payload.getProject().getId())
             .issueIid(payload.getIssueIid())
@@ -110,6 +111,7 @@ public class WorkerService {
                             .withEnv(
                                 new EnvVar("GITLAB_URL", task.getGitlabUrl(), null),
                                 new EnvVar("GITLAB_TOKEN", task.getGitlabToken(), null),
+                                new EnvVar("BOT_USERNAME", task.getBotUsername(), null),
                                 new EnvVar("PROJECT_PATH", task.getProjectPath(), null),
                                 new EnvVar("PROJECT_ID", String.valueOf(task.getProjectId()), null),
                                 new EnvVar("ISSUE_IID", String.valueOf(task.getIssueIid()), null),
