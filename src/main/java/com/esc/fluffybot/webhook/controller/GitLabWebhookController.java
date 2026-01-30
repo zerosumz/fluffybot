@@ -2,9 +2,11 @@ package com.esc.fluffybot.webhook.controller;
 
 import com.esc.fluffybot.config.GitLabProperties;
 import com.esc.fluffybot.webhook.dto.GitLabWebhookPayload;
+import com.esc.fluffybot.webhook.dto.MergeRequestHookPayload;
 import com.esc.fluffybot.webhook.dto.MergeRequestNotePayload;
 import com.esc.fluffybot.webhook.dto.NoteHookPayload;
 import com.esc.fluffybot.webhook.dto.WebhookResponse;
+import com.esc.fluffybot.webhook.handler.MergeRequestEventHandler;
 import com.esc.fluffybot.webhook.handler.MergeRequestNoteHandler;
 import com.esc.fluffybot.webhook.handler.NoteHookHandler;
 import com.esc.fluffybot.webhook.service.WebhookValidationService;
@@ -28,6 +30,7 @@ public class GitLabWebhookController {
     private final WorkerService workerService;
     private final NoteHookHandler noteHookHandler;
     private final MergeRequestNoteHandler mrNoteHandler;
+    private final MergeRequestEventHandler mrEventHandler;
     private final GitLabProperties gitLabProperties;
     private final ObjectMapper objectMapper;
 
@@ -55,6 +58,8 @@ public class GitLabWebhookController {
             return handleNoteHook(payload);
         } else if ("issue".equals(objectKind)) {
             return handleIssueHook(payload);
+        } else if ("merge_request".equals(objectKind)) {
+            return handleMergeRequestHook(payload);
         } else {
             log.debug("Unsupported webhook type: {}", objectKind);
             return Mono.just(ResponseEntity.ok(
@@ -160,6 +165,53 @@ public class GitLabWebhookController {
 
         } catch (Exception e) {
             log.error("Failed to parse issue hook payload: {}", e.getMessage());
+            return Mono.just(ResponseEntity.ok(
+                WebhookResponse.ignored("Failed to parse payload")
+            ));
+        }
+    }
+
+    private Mono<ResponseEntity<WebhookResponse>> handleMergeRequestHook(JsonNode payload) {
+        try {
+            MergeRequestHookPayload mrPayload = objectMapper.treeToValue(payload, MergeRequestHookPayload.class);
+
+            log.debug("MR state={}, action={}",
+                mrPayload.getObjectAttributes() != null ? mrPayload.getObjectAttributes().getState() : "null",
+                mrPayload.getObjectAttributes() != null ? mrPayload.getObjectAttributes().getAction() : "null");
+
+            // Only handle merge events
+            if (!mrPayload.isMerged()) {
+                log.debug("MR not merged, ignoring webhook");
+                return Mono.just(ResponseEntity.ok(
+                    WebhookResponse.ignored("MR not merged")
+                ));
+            }
+
+            // Only handle MRs created by bot
+            if (!mrPayload.isCreatedByBot()) {
+                log.debug("MR not created by bot, ignoring webhook");
+                return Mono.just(ResponseEntity.ok(
+                    WebhookResponse.ignored("MR not created by bot")
+                ));
+            }
+
+            Long projectId = mrPayload.getProjectId();
+            Long mrIid = mrPayload.getMrIid();
+
+            log.info("Processing MR merge event for project={}, MR={}", projectId, mrIid);
+
+            mrEventHandler.handleMergeEvent(mrPayload)
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnSuccess(v -> log.info("MR merge event processed successfully"))
+                .doOnError(error -> log.error("Failed to handle MR merge event: {}", error.getMessage()))
+                .subscribe();
+
+            return Mono.just(ResponseEntity.ok(
+                WebhookResponse.accepted("MR merge event processing started")
+            ));
+
+        } catch (Exception e) {
+            log.error("Failed to parse MR hook payload: {}", e.getMessage());
             return Mono.just(ResponseEntity.ok(
                 WebhookResponse.ignored("Failed to parse payload")
             ));

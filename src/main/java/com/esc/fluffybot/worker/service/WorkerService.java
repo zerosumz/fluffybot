@@ -29,8 +29,16 @@ public class WorkerService {
     private final GitLabApiClient gitLabApiClient;
 
     public Mono<String> createWorkerPod(GitLabWebhookPayload payload, String taskDescription) {
-        WorkerTask task = buildWorkerTask(payload, taskDescription);
-        String jobName = generateJobName(task.getIssueIid());
+        return createWorkerPod(payload, taskDescription, "issue", null);
+    }
+
+    public Mono<String> createWorkerPod(GitLabWebhookPayload payload, String taskDescription, String taskMode) {
+        return createWorkerPod(payload, taskDescription, taskMode, null);
+    }
+
+    public Mono<String> createWorkerPod(GitLabWebhookPayload payload, String taskDescription, String taskMode, Long mrIid) {
+        WorkerTask task = buildWorkerTask(payload, taskDescription, taskMode, mrIid);
+        String jobName = generateJobName(task.getIssueIid(), taskMode);
 
         return Mono.fromCallable(() -> {
             try {
@@ -41,8 +49,9 @@ public class WorkerService {
                     .resource(job)
                     .create();
 
-                log.info("Created worker job: {} in namespace: {}",
+                log.info("Created worker job: {} (mode={}) in namespace: {}",
                     createdJob.getMetadata().getName(),
+                    taskMode,
                     workerProperties.getNamespace());
 
                 return createdJob.getMetadata().getName();
@@ -57,12 +66,12 @@ public class WorkerService {
         });
     }
 
-    private String generateJobName(Long issueIid) {
+    private String generateJobName(Long issueIid, String taskMode) {
         long timestamp = Instant.now().getEpochSecond();
-        return String.format("fluffybot-worker-%d-%d", issueIid, timestamp);
+        return String.format("fluffybot-worker-%s-%d-%d", taskMode, issueIid, timestamp);
     }
 
-    private WorkerTask buildWorkerTask(GitLabWebhookPayload payload, String taskDescription) {
+    private WorkerTask buildWorkerTask(GitLabWebhookPayload payload, String taskDescription, String taskMode, Long mrIid) {
         return WorkerTask.builder()
             .gitlabUrl(gitLabProperties.getUrl())
             .gitlabToken(gitLabProperties.getToken())
@@ -72,6 +81,8 @@ public class WorkerService {
             .issueIid(payload.getIssueIid())
             .anthropicApiKey(workerProperties.getAnthropicApiKey())
             .skipMrCreation(false)
+            .taskMode(taskMode)
+            .mrIid(mrIid)
             .build();
     }
 
@@ -116,7 +127,9 @@ public class WorkerService {
                                 new EnvVar("PROJECT_ID", String.valueOf(task.getProjectId()), null),
                                 new EnvVar("ISSUE_IID", String.valueOf(task.getIssueIid()), null),
                                 new EnvVar("ANTHROPIC_API_KEY", task.getAnthropicApiKey(), null),
-                                new EnvVar("SKIP_MR_CREATION", String.valueOf(task.isSkipMrCreation()), null)
+                                new EnvVar("SKIP_MR_CREATION", String.valueOf(task.isSkipMrCreation()), null),
+                                new EnvVar("TASK_MODE", task.getTaskMode(), null),
+                                new EnvVar("MR_IID", task.getMrIid() != null ? String.valueOf(task.getMrIid()) : "", null)
                             )
                             .withNewResources()
                                 .withRequests(Map.of(

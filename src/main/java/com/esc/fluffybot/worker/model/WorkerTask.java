@@ -14,4 +14,7 @@ public class WorkerTask {
     private Long issueIid;
     private String anthropicApiKey;
     private boolean skipMrCreation;
+    @Builder.Default
+    private String taskMode = "issue";  // "issue" or "wiki"
+    private Long mrIid;  // Used only for wiki mode
 }
