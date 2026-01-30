@@ -869,6 +869,21 @@ if [ -n "$COMMITS" ]; then
     for COMMIT_SHA in $COMMITS; do
         echo "==> Analyzing commit: ${COMMIT_SHA}"
 
+        # 기존 bot 코멘트 확인 (중복 방지)
+        echo "==> Checking for existing bot comments on commit ${COMMIT_SHA}..."
+        EXISTING_COMMENTS=$(curl -s --max-time 15 --connect-timeout 5 \
+            -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+            "${GITLAB_API}/projects/${PROJECT_ID}/repository/commits/${COMMIT_SHA}/comments" 2>/dev/null || echo "[]")
+
+        # bot이 작성한 AI 분석 코멘트가 있는지 확인
+        BOT_COMMENT_EXISTS=$(echo "$EXISTING_COMMENTS" | jq -r --arg bot "$BOT_USERNAME" \
+            '[.[] | select(.author.username == $bot and (.note | contains("📝 **AI 분석**")))] | length' 2>/dev/null || echo "0")
+
+        if [ "$BOT_COMMENT_EXISTS" != "0" ]; then
+            echo "==> Skipping: Bot comment already exists for commit ${COMMIT_SHA}"
+            continue
+        fi
+
         # 커밋 메시지와 diff 가져오기
         COMMIT_MSG=$(git log -1 --pretty=format:"%s" "$COMMIT_SHA")
         COMMIT_DIFF=$(git show "$COMMIT_SHA" --format="" --unified=3)
@@ -1160,14 +1175,26 @@ ${COMMIT_LOG}
 
 자세한 내용은 커밋 히스토리를 확인해주세요."
 
-    # MR에 작업 요약 코멘트 추가
-    echo "==> Posting work summary to MR..."
-    curl -s --max-time 15 --connect-timeout 5 -X POST \
+    # MR에 작업 요약 코멘트 추가 (중복 확인)
+    echo "==> Checking for existing work summary in MR..."
+    EXISTING_MR_COMMENTS=$(curl -s --max-time 15 --connect-timeout 5 \
         -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
-        -H "Content-Type: application/json" \
-        -d "$(jq -n --arg body "$WORK_SUMMARY" '{body: $body}')" \
-        "${GITLAB_API}/projects/${PROJECT_ID}/merge_requests/${MR_IID}/notes" > /dev/null 2>&1 || \
-        echo "Warning: Failed to post comment to MR" >&2
+        "${GITLAB_API}/projects/${PROJECT_ID}/merge_requests/${MR_IID}/notes" 2>/dev/null || echo "[]")
+
+    WORK_SUMMARY_EXISTS=$(echo "$EXISTING_MR_COMMENTS" | jq -r --arg bot "$BOT_USERNAME" \
+        '[.[] | select(.author.username == $bot and (.body | contains("## 📋 작업 요약")))] | length' 2>/dev/null || echo "0")
+
+    if [ "$WORK_SUMMARY_EXISTS" = "0" ]; then
+        echo "==> Posting work summary to MR..."
+        curl -s --max-time 15 --connect-timeout 5 -X POST \
+            -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg body "$WORK_SUMMARY" '{body: $body}')" \
+            "${GITLAB_API}/projects/${PROJECT_ID}/merge_requests/${MR_IID}/notes" > /dev/null 2>&1 || \
+            echo "Warning: Failed to post comment to MR" >&2
+    else
+        echo "==> Skipping: Work summary already exists in MR"
+    fi
 
     # Build completion message
     COMPLETION_MSG="✅ 작업이 완료되었습니다!
