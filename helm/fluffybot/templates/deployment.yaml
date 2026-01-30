@@ -31,6 +31,8 @@ spec:
               containerPort: {{ .Values.webhook.service.targetPort }}
               protocol: TCP
           env:
+            - name: GITLAB_URL
+              value: {{ .Values.gitlab.url | quote }}
             - name: GITLAB_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -41,8 +43,10 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secrets.existingSecret }}
                   key: {{ .Values.secrets.anthropicApiKeyKey }}
-            - name: FLUFFYBOT_GITLAB_BOT_USERNAME
+            - name: GITLAB_BOT_USERNAME
               value: {{ .Values.gitlab.botUsername | quote }}
+            - name: WORKER_IMAGE
+              value: {{ include "fluffybot.workerImage" . }}
           resources:
             {{- toYaml .Values.webhook.resources | nindent 12 }}
           livenessProbe:
