@@ -174,6 +174,7 @@ export GITLAB_URL=https://gitlab.example.com
 export GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
 export GITLAB_BOT_USERNAME=fluffybot
 export ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+export ANTHROPIC_MODEL=claude-sonnet-4-20250514  # 선택사항, 기본값: claude-sonnet-4-20250514
 export WORKER_IMAGE=registry.example.com/org/fluffybot/worker:latest
 export WORKER_NAMESPACE=gitlab
 
@@ -242,7 +243,26 @@ helm install fluffybot ./helm/fluffybot -n gitlab \
   --set ingress.host=fluffybot.example.com \
   --set image.registry=registry.example.com/org/fluffybot \
   --set image.webhookTag=v1.0.0 \
-  --set image.workerTag=v1.0.0
+  --set image.workerTag=v1.0.0 \
+  --set anthropic.model=claude-sonnet-4-20250514
+```
+
+**Claude 모델 설정:**
+
+Anthropic Claude API에서 사용할 모델을 지정할 수 있습니다. 기본값은 `claude-sonnet-4-20250514`입니다.
+
+```bash
+# 다른 Claude 모델 사용
+helm install fluffybot ./helm/fluffybot -n gitlab \
+  --set anthropic.model=claude-opus-4-20250514 \
+  -f helm/fluffybot/values.yaml
+```
+
+또는 `values.yaml` 파일에서 설정:
+
+```yaml
+anthropic:
+  model: claude-sonnet-4-20250514  # 원하는 Claude 모델로 변경
 ```
 
 #### 3. 업그레이드 및 관리
@@ -283,6 +303,10 @@ image:
   registry: registry.example.com/org/fluffybot
   webhookTag: v1.2.3
   workerTag: v1.2.3
+
+# Claude 모델 설정
+anthropic:
+  model: claude-sonnet-4-20250514  # 사용할 Claude 모델 지정
 
 webhook:
   replicas: 2
