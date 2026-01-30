@@ -48,7 +48,7 @@ spec:
             - name: WORKER_IMAGE
               value: {{ include "fluffybot.workerImage" . }}
             - name: ANTHROPIC_MODEL
-              value: {{ .Values.anthropic.model | default "claude-sonnet-4-20250514" | quote }}
+              value: {{ (.Values.anthropic).model | default "claude-sonnet-4-20250514" | quote }}
           resources:
             {{- toYaml .Values.webhook.resources | nindent 12 }}
           livenessProbe:
