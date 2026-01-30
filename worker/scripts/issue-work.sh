@@ -134,6 +134,7 @@ CONTEXT_CLAUDE_MD=$(cat CLAUDE.md)
 # 2. Wiki 페이지 조회
 echo "==> Fetching project wiki..."
 WIKI_CONTEXT=""
+HAS_WIKI="false"
 WIKI_PAGES=$(curl -s --max-time 15 --connect-timeout 5 \
     -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
     "${GITLAB_API}/projects/${PROJECT_ID}/wikis" 2>/dev/null || echo "[]")
@@ -143,6 +144,7 @@ if [ "$WIKI_PAGES" != "[]" ] && [ -n "$WIKI_PAGES" ]; then
     echo "==> Found ${WIKI_COUNT} wiki page(s)"
 
     if [ "$WIKI_COUNT" -gt 0 ]; then
+        HAS_WIKI="true"
         # 각 위키 페이지 조회 및 결합
         WIKI_SLUGS=$(echo "$WIKI_PAGES" | jq -r '.[].slug' 2>/dev/null || echo "")
 
@@ -392,6 +394,18 @@ fi
 # =============================================================================
 echo "==> Preparing prompt..."
 
+# 위키 있을 때 문서화 규칙 생성
+WIKI_DOC_RULE=""
+if [ "$HAS_WIKI" = "true" ]; then
+    WIKI_DOC_RULE="## 문서화 규칙
+- **이 프로젝트는 GitLab Wiki를 사용합니다**
+- \`docs/\` 폴더에 마크다운 문서를 생성하지 마세요
+- 문서화가 필요하면 코드 주석이나 README 수정으로 대체하세요
+- 위키 업데이트는 MR 머지 후 별도 처리됩니다
+
+"
+fi
+
 cat > /tmp/prompt.txt << PROMPT_EOF
 # 프로젝트 컨텍스트
 
@@ -424,11 +438,11 @@ $([ -n "$SKIPPED_IMAGES" ] && echo "# 스킵된 첨부파일 (이미지)" && ech
 
 # 작업 지침
 
-## 중요: 작업 환경
+${WIKI_DOC_RULE}## 중요: 작업 환경
 - **현재 디렉토리(${WORK_DIR})가 이미 클론된 프로젝트 루트입니다**
 - **git clone 하지 마세요 - 이미 완료됨**
 - **모든 작업은 현재 디렉토리에서 수행하세요**
-- Git이 이미 설정되어 있습니다 (user.name: Fluffybot)
+- Git이 이미 설정되어 있습니다 (user.name: ${BOT_USERNAME})
 - 기존 브랜치: ${EXISTING_BRANCH:-없음} (없으면 새 브랜치 생성 필요)
 
 ## 필수 작업 순서
@@ -468,6 +482,7 @@ $([ -n "$SKIPPED_IMAGES" ] && echo "# 스킵된 첨부파일 (이미지)" && ech
 - git clone 하지 마세요 (이미 완료됨)
 - git push 하지 마세요 (스크립트가 처리함)
 - 사용자에게 질문하지 마세요 (비대화형 모드)
+$([ "$HAS_WIKI" = "true" ] && echo "- docs/ 폴더에 문서 파일 생성 금지 (프로젝트 위키 사용)")
 
 ## 토큰 효율성
 - 토큰 사용량이 커밋 메시지와 MR에 기록됩니다
@@ -650,6 +665,7 @@ if [ -n "$COMMITS" ]; then
 
         # Claude에게 커밋 분석 요청 (간단한 프롬프트)
         ANALYSIS_PROMPT="다음 커밋을 분석하고 주요 변경사항을 3줄 이내로 요약하세요. 필요시 mermaid 다이어그램을 사용하세요.
+mermaid 노드 텍스트에 특수문자(/, <, > 등)가 있으면 따옴표로 감싸세요.
 
 커밋: ${COMMIT_MSG}
 
@@ -811,7 +827,7 @@ if [ "$MR_IID" != "null" ] && [ -n "$MR_IID" ]; then
     # 새 Fluffybot 섹션 추가
     FLUFFYBOT_SECTION="
 ---
-🤖 **Fluffybot 작업 정보**
+🤖 **${BOT_USERNAME} 작업 정보**
 - 브랜치: \`${BRANCH_NAME}\`
 - MR: !${MR_IID}"
 
