@@ -1051,6 +1051,92 @@ if [ "$MR_IID" != "null" ] && [ -n "$MR_IID" ]; then
         "${GITLAB_API}/projects/${PROJECT_ID}/issues/${ISSUE_IID}" > /dev/null 2>&1 || \
         echo "Warning: Failed to update issue description" >&2
 
+    # =============================================================================
+    # MR 생성 후 위키 업데이트 지시사항 저장
+    # =============================================================================
+    echo "==> Generating wiki update instructions..."
+
+    # Git diff 통계 생성
+    DIFF_STATS=$(git diff --stat origin/${BASE_BRANCH}...HEAD 2>/dev/null || echo "통계 정보 없음")
+
+    # Claude API로 위키 업데이트 지시사항 생성
+    WIKI_INSTRUCTION_PROMPT="다음 MR의 변경사항을 분석하고, 위키 문서 업데이트 지시사항을 작성하세요.
+
+## MR 정보
+- MR: !${MR_IID}
+- 제목: ${ISSUE_TITLE}
+- 브랜치: ${BRANCH_NAME}
+
+## 커밋 내역
+${COMMIT_LOG}
+
+## 변경 파일 통계
+${DIFF_STATS}
+
+---
+
+다음 형식으로 위키 업데이트 지시사항을 작성하세요:
+
+\`\`\`markdown
+# MR !${MR_IID} 위키 업데이트 지시사항
+
+## 변경 요약
+(이번 MR에서 무엇을 했는지 2-3줄 요약)
+
+## 업데이트 필요 페이지
+
+### Recent-Changes.md
+(Recent-Changes에 추가할 내용 - 날짜, MR 번호, 변경 요약)
+
+### Architecture.md (해당 시)
+(아키텍처 변경이 있으면 어떻게 반영할지)
+
+### Development-Guide.md (해당 시)
+(개발 가이드 변경이 있으면 어떻게 반영할지)
+
+### 기타 (해당 시)
+(새 페이지 생성 필요하면 파일명과 내용 개요)
+
+## 참고
+(위키 작성 시 참고할 소스 파일 목록)
+\`\`\`
+
+지시사항만 출력하세요. 불필요한 페이지는 생략하세요."
+
+    WIKI_INSTRUCTIONS=$(timeout 30s curl -s --max-time 30 -X POST \
+        -H "anthropic-version: 2023-06-01" \
+        -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "$(jq -n \
+            --arg model "claude-sonnet-4-20250514" \
+            --arg prompt "$WIKI_INSTRUCTION_PROMPT" \
+            '{
+                model: $model,
+                max_tokens: 1024,
+                messages: [{
+                    role: "user",
+                    content: $prompt
+                }]
+            }')" \
+        "https://api.anthropic.com/v1/messages" 2>/dev/null | jq -r '.content[0].text // ""' || echo "")
+
+    if [ -n "$WIKI_INSTRUCTIONS" ]; then
+        echo "==> Saving wiki update instructions to mr/${MR_IID}.md..."
+
+        curl -s --max-time 15 --connect-timeout 5 -X POST \
+            -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+                --arg title "mr/${MR_IID}" \
+                --arg content "$WIKI_INSTRUCTIONS" \
+                '{title: $title, content: $content, format: "markdown"}')" \
+            "${GITLAB_API}/projects/${PROJECT_ID}/wikis" > /dev/null 2>&1 && \
+            echo "==> Wiki instruction page created: mr/${MR_IID}" || \
+            echo "==> Warning: Failed to create wiki instruction page"
+    else
+        echo "==> Warning: Failed to generate wiki instructions"
+    fi
+
     # 작업 요약 생성
     echo "==> Generating work summary..."
     WORK_SUMMARY="## 📋 작업 요약
