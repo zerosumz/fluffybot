@@ -8,6 +8,7 @@ import lombok.Data;
 public class WorkerTask {
     private String gitlabUrl;
     private String gitlabToken;
+    private String botUsername;
     private String projectPath;
     private Long projectId;
     private Long issueIid;
