@@ -629,7 +629,13 @@ fi
 # Git Push 및 MR 생성
 # =============================================================================
 
+git push -u origin "${BRANCH_NAME}" || {
+    post_comment "❌ 브랜치 push 실패: ${BRANCH_NAME}"
+    exit 1
+}
+
 # 변경사항이 없는지 확인 (코드 변경이 없으면 MR 생성 건너뛰기)
+echo "==> Checking for code changes..."
 if [ -z "$(git diff origin/${BASE_BRANCH}...HEAD)" ]; then
     echo "==> No code changes detected, skipping MR creation"
 
@@ -649,12 +655,6 @@ if [ -z "$(git diff origin/${BASE_BRANCH}...HEAD)" ]; then
     echo "==> Done! (No code changes, MR creation skipped)"
     exit 0
 fi
-
-echo "==> Pushing ${BRANCH_NAME}..."
-git push -u origin "${BRANCH_NAME}" || {
-    post_comment "❌ 브랜치 push 실패: ${BRANCH_NAME}"
-    exit 1
-}
 
 # 기존 열린 MR 확인
 echo "==> Checking for existing open MRs..."
@@ -683,27 +683,6 @@ if [ "$OPEN_MR" != "null" ] && [ -n "$OPEN_MR" ]; then
     post_comment "$COMPLETION_MSG"
 
     echo "==> Done! (Commits pushed to existing MR !${OPEN_MR})"
-    exit 0
-fi
-
-# SKIP_MR_CREATION 플래그 확인
-if [ "${SKIP_MR_CREATION}" = "true" ]; then
-    echo "==> Skipping MR creation (SKIP_MR_CREATION=true)"
-
-    COMPLETION_MSG="✅ 작업이 완료되었습니다! (MR 생성 생략)
-
-- **브랜치**: \`${BRANCH_NAME}\`
-- **커밋 수**: ${COMMIT_COUNT}"
-    [ "$TOKEN_USAGE" != "unknown" ] && COMPLETION_MSG="${COMPLETION_MSG}
-- **토큰 사용량**: ${TOKEN_USAGE}"
-    COMPLETION_MSG="${COMPLETION_MSG}
-
-⚠️ 이 이슈는 \`task\` 또는 \`no-code\` 라벨이 있어서 MR을 자동으로 생성하지 않았습니다.
-필요한 경우 수동으로 MR을 생성해주세요."
-
-    post_comment "$COMPLETION_MSG"
-
-    echo "==> Done! (MR creation skipped)"
     exit 0
 fi
 

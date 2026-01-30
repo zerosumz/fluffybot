@@ -71,20 +71,4 @@ public class GitLabWebhookPayload {
         }
         return sb.toString().trim();
     }
-
-    public boolean hasTaskLabel() {
-        if (objectAttributes == null || objectAttributes.getLabels() == null) {
-            return false;
-        }
-        return objectAttributes.getLabels().stream()
-            .anyMatch(label -> "task".equalsIgnoreCase(label));
-    }
-
-    public boolean hasNoCodeLabel() {
-        if (objectAttributes == null || objectAttributes.getLabels() == null) {
-            return false;
-        }
-        return objectAttributes.getLabels().stream()
-            .anyMatch(label -> "no-code".equalsIgnoreCase(label) || "documentation".equalsIgnoreCase(label));
-    }
 }
