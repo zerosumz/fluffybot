@@ -34,8 +34,9 @@ RUN apt-get update && apt-get install -y openjdk-21-jdk \
 # 작업 디렉토리
 WORKDIR /workspace
 
-# Entrypoint 스크립트
+# Entrypoint 스크립트 및 스크립트 디렉토리
 COPY entrypoint.sh /entrypoint.sh
-RUN dos2unix /entrypoint.sh && chmod +x /entrypoint.sh
+COPY scripts/ /scripts/
+RUN dos2unix /entrypoint.sh /scripts/*.sh && chmod +x /entrypoint.sh /scripts/*.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
