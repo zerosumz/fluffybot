@@ -35,6 +35,188 @@ gitlab_api() {
         "${GITLAB_API}${endpoint}" 2>/dev/null || echo "{}"
 }
 
+# 위키 페이지 생성 함수
+create_wiki_page() {
+    local title="$1"
+    local content="$2"
+
+    echo "    - Creating wiki page: ${title}"
+
+    RESULT=$(curl -s --max-time 15 --connect-timeout 5 -X POST \
+        -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "$(jq -n \
+            --arg title "$title" \
+            --arg content "$content" \
+            '{title: $title, content: $content, format: "markdown"}')" \
+        "${GITLAB_API}/projects/${PROJECT_ID}/wikis" 2>/dev/null || echo "{}")
+
+    ERROR_MSG=$(echo "$RESULT" | jq -r '.message // ""')
+    if [ -z "$ERROR_MSG" ]; then
+        echo "      ✓ Created: ${title}"
+        return 0
+    else
+        echo "      ✗ Failed: ${title} - ${ERROR_MSG}"
+        return 1
+    fi
+}
+
+# CLAUDE.md에서 위키 설정 파싱
+parse_wiki_config() {
+    local claude_md="$1"
+
+    # "위키 사용: 예/아니오" 파싱
+    WIKI_ENABLED=$(echo "$claude_md" | grep -oP '위키 사용:\s*\K(예|아니오)' || echo "")
+
+    # "위키 URL: ..." 파싱
+    WIKI_URL=$(echo "$claude_md" | grep -oP '위키 URL:\s*\K[^\s]+' || echo "")
+
+    echo "==> Parsed wiki config - Enabled: ${WIKI_ENABLED:-not set}, URL: ${WIKI_URL:-not set}"
+}
+
+# CLAUDE.md에 위키 정보 추가
+update_claude_md_wiki_section() {
+    # 이미 위키 섹션 있으면 스킵
+    if grep -q "## 📚 프로젝트 위키" CLAUDE.md; then
+        echo "==> Wiki section already exists in CLAUDE.md"
+        return 0
+    fi
+
+    WIKI_BASE_URL="${GITLAB_URL}/${PROJECT_PATH}/-/wikis"
+
+    # 위키 섹션 생성
+    WIKI_SECTION="
+
+## 📚 프로젝트 위키
+- **위키 사용**: 예
+- **위키 URL**: ${WIKI_BASE_URL}
+- **주요 페이지**:
+  - [Home](${WIKI_BASE_URL}/Home)
+  - [Architecture](${WIKI_BASE_URL}/Architecture)
+  - [Development-Guide](${WIKI_BASE_URL}/Development-Guide)
+  - [Deployment](${WIKI_BASE_URL}/Deployment)
+  - [Recent-Changes](${WIKI_BASE_URL}/Recent-Changes)
+
+> 문서화는 위키를 사용합니다. docs/ 폴더에 마크다운 파일을 생성하지 마세요.
+"
+
+    # CLAUDE.md 끝에 추가
+    echo "$WIKI_SECTION" >> CLAUDE.md
+
+    # 변경사항 커밋
+    git add CLAUDE.md
+    git commit -m "docs: CLAUDE.md에 위키 설정 추가"
+
+    echo "==> Wiki section added to CLAUDE.md"
+}
+
+# 위키 기본 페이지 생성
+create_default_wiki_pages() {
+    echo "==> Creating default wiki pages..."
+
+    local current_date=$(date +"%Y-%m")
+    local project_name="${PROJECT_PATH##*/}"
+
+    # Home 페이지
+    HOME_CONTENT="# ${project_name}
+
+이 프로젝트는 ${BOT_USERNAME}이 관리합니다.
+
+## 위키 페이지
+
+- [[Architecture]] - 아키텍처 및 기술 스택
+- [[Development-Guide]] - 개발 가이드
+- [[Deployment]] - 배포 방법
+- [[Recent-Changes]] - 최근 변경사항
+
+## ${BOT_USERNAME} 사용법
+
+1. GitLab 이슈를 생성합니다
+2. 이슈에 \`${BOT_USERNAME}\`을 할당합니다
+3. 자동으로 작업이 수행되고 MR이 생성됩니다
+
+또는 이슈 코멘트에서 \`@${BOT_USERNAME}\`을 멘션하여 질문할 수 있습니다."
+
+    # Architecture 페이지
+    ARCHITECTURE_CONTENT="# 아키텍처
+
+## 기술 스택
+
+작업하면서 이 섹션을 채워나갑니다.
+
+## 주요 컴포넌트
+
+작업하면서 이 섹션을 채워나갑니다."
+
+    # Development-Guide 페이지
+    DEVELOPMENT_CONTENT="# 개발 가이드
+
+## 개발 환경
+
+작업하면서 이 섹션을 채워나갑니다.
+
+## 빌드 및 실행
+
+작업하면서 이 섹션을 채워나갑니다."
+
+    # Deployment 페이지
+    DEPLOYMENT_CONTENT="# 배포
+
+## 배포 방법
+
+작업하면서 이 섹션을 채워나갑니다."
+
+    # Recent-Changes 페이지
+    RECENT_CHANGES_CONTENT="# 최근 변경사항
+
+이 페이지는 ${BOT_USERNAME}이 자동으로 업데이트합니다.
+
+## ${current_date}
+
+초기 위키 생성."
+
+    # 위키 페이지들 생성
+    create_wiki_page "Home" "$HOME_CONTENT"
+    create_wiki_page "Architecture" "$ARCHITECTURE_CONTENT"
+    create_wiki_page "Development-Guide" "$DEVELOPMENT_CONTENT"
+    create_wiki_page "Deployment" "$DEPLOYMENT_CONTENT"
+    create_wiki_page "Recent-Changes" "$RECENT_CHANGES_CONTENT"
+
+    echo "==> Default wiki pages created"
+}
+
+# 위키 설정 초기화
+setup_wiki_config() {
+    WIKI_BASE_URL="${GITLAB_URL}/${PROJECT_PATH}/-/wikis"
+
+    # 위키 존재 확인
+    WIKI_PAGES=$(curl -s --max-time 15 --connect-timeout 5 \
+        -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+        "${GITLAB_API}/projects/${PROJECT_ID}/wikis" 2>/dev/null || echo "[]")
+
+    WIKI_COUNT=$(echo "$WIKI_PAGES" | jq '. | length' 2>/dev/null || echo "0")
+
+    if [ "$WIKI_COUNT" -eq 0 ]; then
+        echo "==> No wiki found, creating default wiki pages..."
+
+        # 기본 위키 페이지 생성 시도
+        if create_default_wiki_pages; then
+            echo "==> Wiki pages created successfully"
+
+            # CLAUDE.md에 위키 섹션 추가
+            update_claude_md_wiki_section
+
+            HAS_WIKI="true"
+        else
+            echo "==> Warning: Failed to create wiki pages, continuing without wiki"
+            HAS_WIKI="false"
+        fi
+    else
+        echo "==> Found existing wiki with ${WIKI_COUNT} pages"
+        HAS_WIKI="true"
+    fi
+}
+
 # Claude API를 사용하여 한글 제목을 영문 slug로 변환
 translate_to_slug() {
     local korean_title="$1"
@@ -131,40 +313,56 @@ echo "==> Collecting context..."
 # 1. CLAUDE.md 읽기
 CONTEXT_CLAUDE_MD=$(cat CLAUDE.md)
 
-# 2. Wiki 페이지 조회
-echo "==> Fetching project wiki..."
-WIKI_CONTEXT=""
-HAS_WIKI="false"
-WIKI_PAGES=$(curl -s --max-time 15 --connect-timeout 5 \
-    -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
-    "${GITLAB_API}/projects/${PROJECT_ID}/wikis" 2>/dev/null || echo "[]")
+# 2. 위키 설정 파싱 및 설정
+echo "==> Parsing wiki configuration from CLAUDE.md..."
+parse_wiki_config "$CONTEXT_CLAUDE_MD"
 
-if [ "$WIKI_PAGES" != "[]" ] && [ -n "$WIKI_PAGES" ]; then
-    WIKI_COUNT=$(echo "$WIKI_PAGES" | jq '. | length' 2>/dev/null || echo "0")
-    echo "==> Found ${WIKI_COUNT} wiki page(s)"
+# 위키 설정 확인 및 초기화
+if [ "$WIKI_ENABLED" = "아니오" ]; then
+    echo "==> Wiki is explicitly disabled in CLAUDE.md"
+    HAS_WIKI="false"
+    WIKI_CONTEXT=""
+elif [ -n "$WIKI_URL" ]; then
+    echo "==> Wiki URL found in CLAUDE.md: ${WIKI_URL}"
+    HAS_WIKI="true"
+else
+    echo "==> No wiki configuration found, checking and setting up wiki..."
+    setup_wiki_config
+fi
 
-    if [ "$WIKI_COUNT" -gt 0 ]; then
-        HAS_WIKI="true"
-        # 각 위키 페이지 조회 및 결합
-        WIKI_SLUGS=$(echo "$WIKI_PAGES" | jq -r '.[].slug' 2>/dev/null || echo "")
+# 3. Wiki 페이지 조회 (위키가 활성화된 경우)
+if [ "$HAS_WIKI" = "true" ]; then
+    echo "==> Fetching project wiki..."
+    WIKI_CONTEXT=""
+    WIKI_PAGES=$(curl -s --max-time 15 --connect-timeout 5 \
+        -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+        "${GITLAB_API}/projects/${PROJECT_ID}/wikis" 2>/dev/null || echo "[]")
 
-        if [ -n "$WIKI_SLUGS" ]; then
-            WIKI_CONTEXT="# 프로젝트 위키
+    if [ "$WIKI_PAGES" != "[]" ] && [ -n "$WIKI_PAGES" ]; then
+        WIKI_COUNT=$(echo "$WIKI_PAGES" | jq '. | length' 2>/dev/null || echo "0")
+        echo "==> Found ${WIKI_COUNT} wiki page(s)"
+
+        if [ "$WIKI_COUNT" -gt 0 ]; then
+            # 각 위키 페이지 조회 및 결합
+            WIKI_SLUGS=$(echo "$WIKI_PAGES" | jq -r '.[].slug' 2>/dev/null || echo "")
+
+            if [ -n "$WIKI_SLUGS" ]; then
+                WIKI_CONTEXT="# 프로젝트 위키
 
 "
-            while IFS= read -r slug; do
-                [ -z "$slug" ] && continue
+                while IFS= read -r slug; do
+                    [ -z "$slug" ] && continue
 
-                echo "    - Fetching wiki page: ${slug}"
-                WIKI_PAGE=$(curl -s --max-time 10 --connect-timeout 5 \
-                    -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
-                    "${GITLAB_API}/projects/${PROJECT_ID}/wikis/${slug}" 2>/dev/null || echo "{}")
+                    echo "    - Fetching wiki page: ${slug}"
+                    WIKI_PAGE=$(curl -s --max-time 10 --connect-timeout 5 \
+                        -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+                        "${GITLAB_API}/projects/${PROJECT_ID}/wikis/${slug}" 2>/dev/null || echo "{}")
 
-                PAGE_TITLE=$(echo "$WIKI_PAGE" | jq -r '.title // ""' 2>/dev/null || echo "")
-                PAGE_CONTENT=$(echo "$WIKI_PAGE" | jq -r '.content // ""' 2>/dev/null || echo "")
+                    PAGE_TITLE=$(echo "$WIKI_PAGE" | jq -r '.title // ""' 2>/dev/null || echo "")
+                    PAGE_CONTENT=$(echo "$WIKI_PAGE" | jq -r '.content // ""' 2>/dev/null || echo "")
 
-                if [ -n "$PAGE_TITLE" ] && [ -n "$PAGE_CONTENT" ]; then
-                    WIKI_CONTEXT="${WIKI_CONTEXT}
+                    if [ -n "$PAGE_TITLE" ] && [ -n "$PAGE_CONTENT" ]; then
+                        WIKI_CONTEXT="${WIKI_CONTEXT}
 ## ${PAGE_TITLE}
 
 ${PAGE_CONTENT}
@@ -172,23 +370,27 @@ ${PAGE_CONTENT}
 ---
 
 "
-                fi
-            done <<< "$WIKI_SLUGS"
+                    fi
+                done <<< "$WIKI_SLUGS"
 
-            echo "==> Wiki context collected successfully"
+                echo "==> Wiki context collected successfully"
+            fi
         fi
+    else
+        echo "==> No wiki pages found"
     fi
 else
-    echo "==> No wiki pages found"
+    echo "==> Wiki disabled, skipping wiki fetch"
+    WIKI_CONTEXT=""
 fi
 
-# 3. 이슈 상세 정보 조회
+# 4. 이슈 상세 정보 조회
 ISSUE_DATA=$(gitlab_api "/projects/${PROJECT_ID}/issues/${ISSUE_IID}")
 ISSUE_TITLE=$(echo "$ISSUE_DATA" | jq -r '.title')
 ISSUE_DESCRIPTION=$(echo "$ISSUE_DATA" | jq -r '.description // ""')
 ISSUE_LABELS=$(echo "$ISSUE_DATA" | jq -r '.labels | join(", ")')
 
-# 4. 기존 브랜치 확인 (이슈 본문 및 코멘트에서 추출)
+# 5. 기존 브랜치 확인 (이슈 본문 및 코멘트에서 추출)
 echo "==> Checking for existing branches..."
 
 # 이슈 본문에서 브랜치 정보 추출
@@ -317,7 +519,7 @@ else
     post_comment "🤖 작업을 시작합니다... (새 브랜치: \`${BRANCH_NAME}\`)"
 fi
 
-# 5. 참조된 이슈들 조회 (description에서 #123 형태 추출)
+# 6. 참조된 이슈들 조회 (description에서 #123 형태 추출)
 RELATED_ISSUES=""
 ISSUE_REFS=$(echo "$ISSUE_DESCRIPTION" | grep -oP '#\K\d+' || true)
 if [ -n "$ISSUE_REFS" ]; then
@@ -331,10 +533,10 @@ if [ -n "$ISSUE_REFS" ]; then
     done
 fi
 
-# 6. 최근 커밋 로그 (컨텍스트용)
+# 7. 최근 커밋 로그 (컨텍스트용)
 RECENT_COMMITS=$(git log --oneline -10 2>/dev/null || echo "No commits")
 
-# 7. 첨부파일 다운로드
+# 8. 첨부파일 다운로드
 ATTACHMENTS_DIR="/tmp/attachments"
 ATTACHMENTS_INFO=""
 SKIPPED_IMAGES=""
@@ -396,12 +598,20 @@ echo "==> Preparing prompt..."
 
 # 위키 있을 때 문서화 규칙 생성
 WIKI_DOC_RULE=""
+WIKI_INFO=""
 if [ "$HAS_WIKI" = "true" ]; then
+    WIKI_BASE_URL="${GITLAB_URL}/${PROJECT_PATH}/-/wikis"
     WIKI_DOC_RULE="## 문서화 규칙
 - **이 프로젝트는 GitLab Wiki를 사용합니다**
 - \`docs/\` 폴더에 마크다운 문서를 생성하지 마세요
 - 문서화가 필요하면 코드 주석이나 README 수정으로 대체하세요
 - 위키 업데이트는 MR 머지 후 별도 처리됩니다
+
+"
+    WIKI_INFO="## 프로젝트 위키
+- **위키 URL**: ${WIKI_BASE_URL}
+- 문서화가 필요하면 위키를 참조하거나 README를 수정하세요
+- docs/ 폴더에 별도 문서 파일을 생성하지 마세요
 
 "
 fi
@@ -438,7 +648,7 @@ $([ -n "$SKIPPED_IMAGES" ] && echo "# 스킵된 첨부파일 (이미지)" && ech
 
 # 작업 지침
 
-${WIKI_DOC_RULE}## 중요: 작업 환경
+${WIKI_DOC_RULE}$([ -n "$WIKI_INFO" ] && echo "$WIKI_INFO")## 중요: 작업 환경
 - **현재 디렉토리(${WORK_DIR})가 이미 클론된 프로젝트 루트입니다**
 - **git clone 하지 마세요 - 이미 완료됨**
 - **모든 작업은 현재 디렉토리에서 수행하세요**
