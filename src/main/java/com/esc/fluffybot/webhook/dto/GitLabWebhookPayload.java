@@ -28,7 +28,17 @@ public class GitLabWebhookPayload {
             return false;
         }
         String action = objectAttributes.getAction();
+        // Only accept "open" or "update" actions
+        // Explicitly reject "close" and "reopen" to prevent triggering on issue state changes
         return "open".equals(action) || "update".equals(action);
+    }
+
+    public boolean isCloseAction() {
+        if (objectAttributes == null || objectAttributes.getAction() == null) {
+            return false;
+        }
+        String action = objectAttributes.getAction();
+        return "close".equals(action);
     }
 
     public boolean hasAssignee(String username) {

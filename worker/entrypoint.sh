@@ -628,11 +628,63 @@ fi
 # =============================================================================
 # Git Push 및 MR 생성
 # =============================================================================
-echo "==> Pushing ${BRANCH_NAME}..."
+
 git push -u origin "${BRANCH_NAME}" || {
     post_comment "❌ 브랜치 push 실패: ${BRANCH_NAME}"
     exit 1
 }
+
+# 변경사항이 없는지 확인 (코드 변경이 없으면 MR 생성 건너뛰기)
+echo "==> Checking for code changes..."
+if [ -z "$(git diff origin/${BASE_BRANCH}...HEAD)" ]; then
+    echo "==> No code changes detected, skipping MR creation"
+
+    COMPLETION_MSG="✅ 작업이 완료되었습니다! (MR 생성 생략)
+
+- **브랜치**: \`${BRANCH_NAME}\`
+- **커밋 수**: ${COMMIT_COUNT}"
+    [ "$TOKEN_USAGE" != "unknown" ] && COMPLETION_MSG="${COMPLETION_MSG}
+- **토큰 사용량**: ${TOKEN_USAGE}"
+    COMPLETION_MSG="${COMPLETION_MSG}
+
+ℹ️ 코드 변경사항이 없어서 MR을 생성하지 않았습니다.
+이 이슈는 코드 외적인 작업(위키 업데이트, 설정 변경 등)으로 완료되었습니다."
+
+    post_comment "$COMPLETION_MSG"
+
+    echo "==> Done! (No code changes, MR creation skipped)"
+    exit 0
+fi
+
+# 기존 열린 MR 확인
+echo "==> Checking for existing open MRs..."
+OPEN_MR=$(curl -s --max-time 10 --connect-timeout 5 \
+    -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+    "${GITLAB_API}/projects/${PROJECT_ID}/merge_requests?state=opened&source_branch=${BRANCH_NAME}" 2>/dev/null | \
+    jq -r '.[0].iid // "null"')
+
+if [ "$OPEN_MR" != "null" ] && [ -n "$OPEN_MR" ]; then
+    echo "==> Found existing open MR: !${OPEN_MR}"
+
+    MR_URL="${GITLAB_URL}/${PROJECT_PATH}/-/merge_requests/${OPEN_MR}"
+
+    COMPLETION_MSG="✅ 작업이 완료되었습니다! (기존 MR에 커밋 추가)
+
+- **MR**: ${MR_URL}
+- **브랜치**: \`${BRANCH_NAME}\`
+- **커밋 수**: ${COMMIT_COUNT}"
+    [ "$TOKEN_USAGE" != "unknown" ] && COMPLETION_MSG="${COMPLETION_MSG}
+- **토큰 사용량**: ${TOKEN_USAGE}"
+    COMPLETION_MSG="${COMPLETION_MSG}
+
+ℹ️ 기존 MR !${OPEN_MR}이 열려있어서 새 MR을 생성하지 않고 커밋을 추가했습니다.
+변경사항을 확인하고 머지해주세요."
+
+    post_comment "$COMPLETION_MSG"
+
+    echo "==> Done! (Commits pushed to existing MR !${OPEN_MR})"
+    exit 0
+fi
 
 # MR 생성
 echo "==> Creating Merge Request..."

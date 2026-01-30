@@ -70,6 +70,7 @@ public class WorkerService {
             .projectId(payload.getProject().getId())
             .issueIid(payload.getIssueIid())
             .anthropicApiKey(workerProperties.getAnthropicApiKey())
+            .skipMrCreation(payload.hasTaskLabel() || payload.hasNoCodeLabel())
             .build();
     }
 
@@ -112,7 +113,8 @@ public class WorkerService {
                                 new EnvVar("PROJECT_PATH", task.getProjectPath(), null),
                                 new EnvVar("PROJECT_ID", String.valueOf(task.getProjectId()), null),
                                 new EnvVar("ISSUE_IID", String.valueOf(task.getIssueIid()), null),
-                                new EnvVar("ANTHROPIC_API_KEY", task.getAnthropicApiKey(), null)
+                                new EnvVar("ANTHROPIC_API_KEY", task.getAnthropicApiKey(), null),
+                                new EnvVar("SKIP_MR_CREATION", String.valueOf(task.isSkipMrCreation()), null)
                             )
                             .withNewResources()
                                 .withRequests(Map.of(

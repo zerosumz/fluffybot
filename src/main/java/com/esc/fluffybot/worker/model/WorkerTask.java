@@ -12,4 +12,5 @@ public class WorkerTask {
     private Long projectId;
     private Long issueIid;
     private String anthropicApiKey;
+    private boolean skipMrCreation;
 }
