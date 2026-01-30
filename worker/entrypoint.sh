@@ -656,6 +656,36 @@ git push -u origin "${BRANCH_NAME}" || {
     exit 1
 }
 
+# 기존 열린 MR 확인
+echo "==> Checking for existing open MRs..."
+OPEN_MR=$(curl -s --max-time 10 --connect-timeout 5 \
+    -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+    "${GITLAB_API}/projects/${PROJECT_ID}/merge_requests?state=opened&source_branch=${BRANCH_NAME}" 2>/dev/null | \
+    jq -r '.[0].iid // "null"')
+
+if [ "$OPEN_MR" != "null" ] && [ -n "$OPEN_MR" ]; then
+    echo "==> Found existing open MR: !${OPEN_MR}"
+
+    MR_URL="${GITLAB_URL}/${PROJECT_PATH}/-/merge_requests/${OPEN_MR}"
+
+    COMPLETION_MSG="✅ 작업이 완료되었습니다! (기존 MR에 커밋 추가)
+
+- **MR**: ${MR_URL}
+- **브랜치**: \`${BRANCH_NAME}\`
+- **커밋 수**: ${COMMIT_COUNT}"
+    [ "$TOKEN_USAGE" != "unknown" ] && COMPLETION_MSG="${COMPLETION_MSG}
+- **토큰 사용량**: ${TOKEN_USAGE}"
+    COMPLETION_MSG="${COMPLETION_MSG}
+
+ℹ️ 기존 MR !${OPEN_MR}이 열려있어서 새 MR을 생성하지 않고 커밋을 추가했습니다.
+변경사항을 확인하고 머지해주세요."
+
+    post_comment "$COMPLETION_MSG"
+
+    echo "==> Done! (Commits pushed to existing MR !${OPEN_MR})"
+    exit 0
+fi
+
 # SKIP_MR_CREATION 플래그 확인
 if [ "${SKIP_MR_CREATION}" = "true" ]; then
     echo "==> Skipping MR creation (SKIP_MR_CREATION=true)"
