@@ -628,6 +628,28 @@ fi
 # =============================================================================
 # Git Push 및 MR 생성
 # =============================================================================
+
+# 변경사항이 없는지 확인 (코드 변경이 없으면 MR 생성 건너뛰기)
+if [ -z "$(git diff origin/${BASE_BRANCH}...HEAD)" ]; then
+    echo "==> No code changes detected, skipping MR creation"
+
+    COMPLETION_MSG="✅ 작업이 완료되었습니다! (MR 생성 생략)
+
+- **브랜치**: \`${BRANCH_NAME}\`
+- **커밋 수**: ${COMMIT_COUNT}"
+    [ "$TOKEN_USAGE" != "unknown" ] && COMPLETION_MSG="${COMPLETION_MSG}
+- **토큰 사용량**: ${TOKEN_USAGE}"
+    COMPLETION_MSG="${COMPLETION_MSG}
+
+ℹ️ 코드 변경사항이 없어서 MR을 생성하지 않았습니다.
+이 이슈는 코드 외적인 작업(위키 업데이트, 설정 변경 등)으로 완료되었습니다."
+
+    post_comment "$COMPLETION_MSG"
+
+    echo "==> Done! (No code changes, MR creation skipped)"
+    exit 0
+fi
+
 echo "==> Pushing ${BRANCH_NAME}..."
 git push -u origin "${BRANCH_NAME}" || {
     post_comment "❌ 브랜치 push 실패: ${BRANCH_NAME}"
