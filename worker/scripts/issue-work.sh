@@ -286,6 +286,7 @@ translate_to_slug() {
 # Git 설정
 # =============================================================================
 git config --global user.name "${BOT_USERNAME}"
+git config --global user.email "${BOT_USERNAME}@fluffybot.local"
 git config --global credential.helper store
 echo "https://${BOT_USERNAME}:${GITLAB_TOKEN}@${GITLAB_URL#https://}" > ~/.git-credentials
 
