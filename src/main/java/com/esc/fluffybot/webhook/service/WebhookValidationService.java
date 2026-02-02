@@ -1,8 +1,10 @@
 package com.esc.fluffybot.webhook.service;
 
 import com.esc.fluffybot.webhook.dto.GitLabWebhookPayload;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class WebhookValidationService {
 
@@ -24,6 +26,14 @@ public class WebhookValidationService {
 
         if (!payload.isOpenOrUpdate()) {
             return "Issue action is not open or update";
+        }
+
+        // For update actions, only proceed if description changed
+        if (payload.getObjectAttributes() != null && "update".equals(payload.getObjectAttributes().getAction())) {
+            if (!payload.hasDescriptionChange()) {
+                log.debug("Skipping update without description change for issue #{}", payload.getIssueIid());
+                return "Update without description change - ignoring";
+            }
         }
 
         if (payload.getProject() == null || payload.getProject().getId() == null) {
