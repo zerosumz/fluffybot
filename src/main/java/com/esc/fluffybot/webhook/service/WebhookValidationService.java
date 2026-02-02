@@ -16,6 +16,12 @@ public class WebhookValidationService {
             return "Issue is being closed - ignoring";
         }
 
+        // Explicitly reject reopen actions to prevent duplicate Worker Jobs
+        // When an issue is reopened and modified, "update" event will trigger separately
+        if (payload.isReopenAction()) {
+            return "Issue is being reopened - ignoring (description update will trigger separately)";
+        }
+
         if (!payload.isOpenOrUpdate()) {
             return "Issue action is not open or update";
         }

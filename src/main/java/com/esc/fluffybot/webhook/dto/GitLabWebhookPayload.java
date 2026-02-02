@@ -41,6 +41,14 @@ public class GitLabWebhookPayload {
         return "close".equals(action);
     }
 
+    public boolean isReopenAction() {
+        if (objectAttributes == null || objectAttributes.getAction() == null) {
+            return false;
+        }
+        String action = objectAttributes.getAction();
+        return "reopen".equals(action);
+    }
+
     public boolean hasAssignee(String username) {
         if (assignees == null || assignees.isEmpty()) {
             return false;
