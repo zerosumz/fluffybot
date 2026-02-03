@@ -1,6 +1,7 @@
 package com.esc.fluffybot.webhook.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
 
 import java.util.List;
@@ -18,6 +19,9 @@ public class GitLabWebhookPayload {
 
     @JsonProperty("object_attributes")
     private ObjectAttributes objectAttributes;
+
+    @JsonProperty("changes")
+    private JsonNode changes;
 
     public boolean isIssueHook() {
         return "issue".equals(objectKind);
@@ -78,6 +82,14 @@ public class GitLabWebhookPayload {
             sb.append(getIssueDescription());
         }
         return sb.toString().trim();
+    }
+
+    public boolean hasDescriptionChange() {
+        if (changes == null || changes.isNull() || changes.isMissingNode()) {
+            return false;
+        }
+        JsonNode descriptionChange = changes.get("description");
+        return descriptionChange != null && !descriptionChange.isNull() && !descriptionChange.isMissingNode();
     }
 
 }
