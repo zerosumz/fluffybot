@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.Instant;
+import java.util.Objects;
 
 @Data
 @Builder
@@ -17,4 +18,13 @@ public class JobStatusResponse {
     private Integer succeeded;
     private Integer failed;
     private String message;
+
+    // Custom getters to handle null values safely
+    public Integer getSucceeded() {
+        return Objects.requireNonNullElse(succeeded, 0);
+    }
+
+    public Integer getFailed() {
+        return Objects.requireNonNullElse(failed, 0);
+    }
 }
