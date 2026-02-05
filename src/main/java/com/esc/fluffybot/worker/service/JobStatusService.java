@@ -90,8 +90,8 @@ public class JobStatusService {
                 ZonedDateTime.parse(status.getStartTime()).toInstant() : null)
             .completionTime(status != null && status.getCompletionTime() != null ?
                 ZonedDateTime.parse(status.getCompletionTime()).toInstant() : null)
-            .succeeded(status != null ? status.getSucceeded() : 0)
-            .failed(status != null ? status.getFailed() : 0)
+            .succeeded(status != null && status.getSucceeded() != null ? status.getSucceeded() : 0)
+            .failed(status != null && status.getFailed() != null ? status.getFailed() : 0)
             .build();
     }
 
