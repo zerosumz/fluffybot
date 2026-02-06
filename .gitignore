@@ -27,3 +27,6 @@ Thumbs.db
 
 # Local configuration
 helm/fluffybot/values.yaml
+
+# Claude Code
+.claude/settings.local.json
