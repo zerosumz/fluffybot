@@ -537,7 +537,79 @@ fi
 # 7. 최근 커밋 로그 (컨텍스트용)
 RECENT_COMMITS=$(git log --oneline -10 2>/dev/null || echo "No commits")
 
-# 8. 첨부파일 다운로드
+# 8. 이슈 변경분 확인 및 기존 MR diff 수집 (증분 작업 최적화)
+INCREMENTAL_CONTEXT=""
+HAS_DESCRIPTION_CHANGE="false"
+
+if [ -n "$DESCRIPTION_PREVIOUS" ] && [ -n "$DESCRIPTION_CURRENT" ] && [ "$DESCRIPTION_PREVIOUS" != "$DESCRIPTION_CURRENT" ]; then
+    echo "==> Description change detected, checking for related MRs..."
+    HAS_DESCRIPTION_CHANGE="true"
+
+    # 관련 MR 조회
+    RELATED_MRS=$(curl -s --max-time 15 --connect-timeout 5 \
+        -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+        "${GITLAB_API}/projects/${PROJECT_ID}/issues/${ISSUE_IID}/related_merge_requests" 2>/dev/null || echo "[]")
+
+    MR_COUNT=$(echo "$RELATED_MRS" | jq '. | length' 2>/dev/null || echo "0")
+
+    if [ "$MR_COUNT" -gt 0 ]; then
+        echo "==> Found ${MR_COUNT} related MR(s), fetching diffs..."
+
+        INCREMENTAL_CONTEXT="# 증분 작업 모드
+
+## 이슈 변경 이력
+
+### 변경 전 (previous)
+${DESCRIPTION_PREVIOUS}
+
+### 변경 후 (current)
+${DESCRIPTION_CURRENT}
+
+## 기존 작업 참조 (읽기 전용)
+
+이 이슈에 대해 기존 작업된 커밋 diff:
+
+"
+
+        # 각 MR의 diff 수집 (최대 5개)
+        MR_IIDS=$(echo "$RELATED_MRS" | jq -r '.[0:5] | .[].iid' 2>/dev/null || echo "")
+        if [ -n "$MR_IIDS" ]; then
+            for mr_iid in $MR_IIDS; do
+                echo "    - Fetching diffs for MR !${mr_iid}"
+
+                MR_CHANGES=$(curl -s --max-time 15 --connect-timeout 5 \
+                    -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+                    "${GITLAB_API}/projects/${PROJECT_ID}/merge_requests/${mr_iid}/changes" 2>/dev/null || echo "{}")
+
+                MR_TITLE=$(echo "$MR_CHANGES" | jq -r '.title // "Unknown"')
+                MR_DIFFS=$(echo "$MR_CHANGES" | jq -r '.changes[] | "### \(.new_path)\n```diff\n\(.diff)\n```\n"' 2>/dev/null || echo "")
+
+                if [ -n "$MR_DIFFS" ]; then
+                    INCREMENTAL_CONTEXT="${INCREMENTAL_CONTEXT}
+### MR !${mr_iid}: ${MR_TITLE}
+
+${MR_DIFFS}
+
+"
+                fi
+            done
+        fi
+
+        INCREMENTAL_CONTEXT="${INCREMENTAL_CONTEXT}
+
+---
+
+"
+        echo "==> Incremental context collected (${MR_COUNT} MR(s))"
+    else
+        echo "==> No related MRs found, treating as new work"
+        HAS_DESCRIPTION_CHANGE="false"
+    fi
+else
+    echo "==> No description change detected or first time processing"
+fi
+
+# 9. 첨부파일 다운로드
 ATTACHMENTS_DIR="/tmp/attachments"
 ATTACHMENTS_INFO=""
 SKIPPED_IMAGES=""
@@ -632,6 +704,8 @@ ${RECENT_COMMITS}
 
 ---
 
+$([ "$HAS_DESCRIPTION_CHANGE" = "true" ] && echo "$INCREMENTAL_CONTEXT")
+
 # 이슈 #${ISSUE_IID}: ${ISSUE_TITLE}
 
 **라벨**: ${ISSUE_LABELS:-없음}
@@ -649,7 +723,31 @@ $([ -n "$SKIPPED_IMAGES" ] && echo "# 스킵된 첨부파일 (이미지)" && ech
 
 # 작업 지침
 
-${WIKI_DOC_RULE}$([ -n "$WIKI_INFO" ] && echo "$WIKI_INFO")## 중요: 작업 환경
+${WIKI_DOC_RULE}$([ -n "$WIKI_INFO" ] && echo "$WIKI_INFO")$([ "$HAS_DESCRIPTION_CHANGE" = "true" ] && echo "## ⚡ 증분 작업 모드
+이 이슈는 기존 작업이 있는 상태에서 설명이 변경되었습니다.
+
+### 작업 원칙
+1. **변경분 파악**: previous와 current를 비교하여 무엇이 변경되었는지 정확히 파악하세요.
+2. **변경 성격 판단**:
+   - **APPEND**: 새로운 요구사항 추가 → 기존 코드 위에 추가 구현
+   - **MODIFY**: 기존 요구사항 수정 → 기존 커밋의 해당 코드를 수정
+   - **REPLACE**: 이슈 내용 대부분 교체 → 이슈 코멘트로 사용자에게 확인 요청 후 작업 보류
+3. **기존 작업 참조**: 위의 \"기존 작업 참조\" 섹션의 커밋 diff를 참고하되, 직접 수정하지 마세요.
+4. **코드 일관성**: 기존 코드의 컨벤션, 구조, 패턴을 따르세요.
+5. **최소 변경**: 변경분에 해당하는 작업만 수행하고, 기존 작업과 무관한 코드는 건드리지 마세요.
+
+### REPLACE 판정 시 처리
+이슈 내용이 대부분 교체되었다고 판단되면, 다음 코멘트를 남기고 작업을 보류하세요:
+\`\`\`bash
+curl -s -X POST \\
+  -H \"PRIVATE-TOKEN: \${GITLAB_TOKEN}\" \\
+  -H \"Content-Type: application/json\" \\
+  -d '{\"body\": \"⚠️ **이슈 내용이 크게 변경되었습니다**\\n\\n기존 작업과의 관계를 판단하기 어려워 작업을 보류합니다.\\n\\n- 기존 이슈를 수정하여 계속 진행하시려면 변경 의도를 코멘트로 남겨주세요.\\n- 새로운 작업이라면 새 이슈 생성을 권장합니다.\"}' \\
+  \"\${GITLAB_API}/projects/\${PROJECT_ID}/issues/\${ISSUE_IID}/notes\"
+exit 0
+\`\`\`
+
+")## 중요: 작업 환경
 - **현재 디렉토리(${WORK_DIR})가 이미 클론된 프로젝트 루트입니다**
 - **git clone 하지 마세요 - 이미 완료됨**
 - **모든 작업은 현재 디렉토리에서 수행하세요**
@@ -664,7 +762,7 @@ ${WIKI_DOC_RULE}$([ -n "$WIKI_INFO" ] && echo "$WIKI_INFO")## 중요: 작업 환
    - **브랜치는 이미 준비되어 있으므로 추가 생성 불필요**
 
 2. **이슈 요구사항 구현**:
-   - 위 이슈 설명에 따라 코드 작성/수정
+   $([ "$HAS_DESCRIPTION_CHANGE" = "true" ] && echo "- **증분 작업 모드**: 이슈 변경분만 반영하세요 (위 변경 이력 참고)" || echo "- 위 이슈 설명에 따라 코드 작성/수정")
    - 필요한 파일 읽기, 편집, 생성
 
 3. **Git 커밋 (필수!)**:

@@ -210,4 +210,52 @@ public class GitLabApiClient {
                 return Mono.empty();
             });
     }
+
+    public Mono<java.util.List<Map<String, Object>>> getRelatedMergeRequests(Long projectId, Long issueIid) {
+        String uri = String.format("/api/v4/projects/%d/issues/%d/related_merge_requests", projectId, issueIid);
+
+        return gitLabWebClient.get()
+            .uri(uri)
+            .retrieve()
+            .onStatus(
+                status -> status.is4xxClientError() || status.is5xxServerError(),
+                response -> response.bodyToMono(String.class)
+                    .flatMap(body -> {
+                        log.error("GitLab API error: status={}, body={}", response.statusCode(), body);
+                        return Mono.error(new GitLabApiException(
+                            "Failed to get related merge requests: " + response.statusCode()
+                        ));
+                    })
+            )
+            .bodyToMono(new ParameterizedTypeReference<java.util.List<Map<String, Object>>>() {})
+            .doOnSuccess(v -> log.debug("Retrieved related MRs for issue: project={}, iid={}", projectId, issueIid))
+            .onErrorResume(e -> {
+                log.error("Failed to get related merge requests: {}", e.getMessage());
+                return Mono.just(java.util.List.of());
+            });
+    }
+
+    public Mono<Map<String, Object>> getMergeRequestDiffs(Long projectId, Long mrIid) {
+        String uri = String.format("/api/v4/projects/%d/merge_requests/%d/diffs", projectId, mrIid);
+
+        return gitLabWebClient.get()
+            .uri(uri)
+            .retrieve()
+            .onStatus(
+                status -> status.is4xxClientError() || status.is5xxServerError(),
+                response -> response.bodyToMono(String.class)
+                    .flatMap(body -> {
+                        log.error("GitLab API error: status={}, body={}", response.statusCode(), body);
+                        return Mono.error(new GitLabApiException(
+                            "Failed to get merge request diffs: " + response.statusCode()
+                        ));
+                    })
+            )
+            .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+            .doOnSuccess(v -> log.debug("Retrieved MR diffs: project={}, iid={}", projectId, mrIid))
+            .onErrorResume(e -> {
+                log.error("Failed to get merge request diffs: {}", e.getMessage());
+                return Mono.just(Map.of());
+            });
+    }
 }
