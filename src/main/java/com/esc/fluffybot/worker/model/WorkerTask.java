@@ -17,4 +17,6 @@ public class WorkerTask {
     @Builder.Default
     private String taskMode = "issue";  // "issue" or "wiki"
     private Long mrIid;  // Used only for wiki mode
+    private String descriptionPrevious;  // Previous issue description (for incremental work)
+    private String descriptionCurrent;   // Current issue description (for incremental work)
 }

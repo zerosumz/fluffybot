@@ -23,6 +23,26 @@ public class GitLabWebhookPayload {
     @JsonProperty("changes")
     private JsonNode changes;
 
+    public DescriptionChange getDescriptionChange() {
+        if (changes == null || changes.isNull() || changes.isMissingNode()) {
+            return null;
+        }
+        JsonNode descNode = changes.get("description");
+        if (descNode == null || descNode.isNull() || descNode.isMissingNode()) {
+            return null;
+        }
+        DescriptionChange descChange = new DescriptionChange();
+        JsonNode prevNode = descNode.get("previous");
+        JsonNode currNode = descNode.get("current");
+        if (prevNode != null && !prevNode.isNull()) {
+            descChange.setPrevious(prevNode.asText());
+        }
+        if (currNode != null && !currNode.isNull()) {
+            descChange.setCurrent(currNode.asText());
+        }
+        return descChange;
+    }
+
     public boolean isIssueHook() {
         return "issue".equals(objectKind);
     }

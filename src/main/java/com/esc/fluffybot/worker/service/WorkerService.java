@@ -72,7 +72,7 @@ public class WorkerService {
     }
 
     private WorkerTask buildWorkerTask(GitLabWebhookPayload payload, String taskDescription, String taskMode, Long mrIid) {
-        return WorkerTask.builder()
+        WorkerTask.WorkerTaskBuilder builder = WorkerTask.builder()
             .gitlabUrl(gitLabProperties.getUrl())
             .gitlabToken(gitLabProperties.getToken())
             .botUsername(gitLabProperties.getBotUsername())
@@ -82,8 +82,18 @@ public class WorkerService {
             .anthropicApiKey(workerProperties.getAnthropicApiKey())
             .skipMrCreation(false)
             .taskMode(taskMode)
-            .mrIid(mrIid)
-            .build();
+            .mrIid(mrIid);
+
+        // Add description change information if available
+        if (payload.hasDescriptionChange()) {
+            var descChange = payload.getDescriptionChange();
+            if (descChange != null && descChange.hasChange()) {
+                builder.descriptionPrevious(descChange.getPrevious())
+                       .descriptionCurrent(descChange.getCurrent());
+            }
+        }
+
+        return builder.build();
     }
 
     private Job buildJobSpec(String jobName, WorkerTask task) {
@@ -129,7 +139,9 @@ public class WorkerService {
                                 new EnvVar("ANTHROPIC_API_KEY", task.getAnthropicApiKey(), null),
                                 new EnvVar("SKIP_MR_CREATION", String.valueOf(task.isSkipMrCreation()), null),
                                 new EnvVar("TASK_MODE", task.getTaskMode(), null),
-                                new EnvVar("MR_IID", task.getMrIid() != null ? String.valueOf(task.getMrIid()) : "", null)
+                                new EnvVar("MR_IID", task.getMrIid() != null ? String.valueOf(task.getMrIid()) : "", null),
+                                new EnvVar("DESCRIPTION_PREVIOUS", task.getDescriptionPrevious() != null ? task.getDescriptionPrevious() : "", null),
+                                new EnvVar("DESCRIPTION_CURRENT", task.getDescriptionCurrent() != null ? task.getDescriptionCurrent() : "", null)
                             )
                             .withNewResources()
                                 .withRequests(Map.of(
