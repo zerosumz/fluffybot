@@ -3,7 +3,7 @@ set -e
 
 # =============================================================================
 # Wiki 업데이트 모드
-# MR 머지 후 호출되어 위키 저장소를 clone하고 Claude Code로 업데이트
+# MR 머지 후 호출되어 위키 저장소를 clone하고 선택한 Agent로 업데이트
 # =============================================================================
 
 : "${GITLAB_URL:?GITLAB_URL is required}"
@@ -12,7 +12,10 @@ set -e
 : "${PROJECT_ID:?PROJECT_ID is required}"
 : "${PROJECT_PATH:?PROJECT_PATH is required}"
 : "${MR_IID:?MR_IID is required}"
-: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/agent.sh"
+require_agent_credentials
 
 GITLAB_API="${GITLAB_URL}/api/v4"
 WIKI_DIR="/workspace/wiki"
@@ -108,9 +111,10 @@ EOF
 fi
 
 # =============================================================================
-# Claude Code로 위키 업데이트
+# Agent로 위키 업데이트
 # =============================================================================
-echo "==> Running Claude Code for wiki update..."
+AGENT_NAME="$(agent_display_name)"
+echo "==> Running ${AGENT_NAME} for wiki update..."
 
 CURRENT_DATE=$(date +"%Y-%m-%d")
 
@@ -143,14 +147,14 @@ ${INSTRUCTIONS}
 **지금 작업을 시작하세요!**
 PROMPT_EOF
 
-# Claude Code 실행
+# Agent 실행
 set +e
-claude -p "$(cat /tmp/wiki_prompt.txt)" --allowedTools "Bash,Read,Write,Edit,Glob,Grep" --verbose 2>&1 | tee /tmp/claude_wiki_output.log
-CLAUDE_EXIT_CODE=$?
+run_agent_cli /tmp/wiki_prompt.txt "/tmp/${AGENT_PROVIDER}_wiki_output.log"
+AGENT_EXIT_CODE=$?
 set -e
 
-if [ $CLAUDE_EXIT_CODE -ne 0 ]; then
-    echo "==> Warning: Claude Code failed, but continuing..."
+if [ $AGENT_EXIT_CODE -ne 0 ]; then
+    echo "==> Warning: ${AGENT_NAME} failed, but continuing..."
 fi
 
 # =============================================================================

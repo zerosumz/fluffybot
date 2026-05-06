@@ -10,7 +10,10 @@ set -e
 : "${PROJECT_PATH:?PROJECT_PATH is required}"
 : "${PROJECT_ID:?PROJECT_ID is required}"
 : "${ISSUE_IID:?ISSUE_IID is required}"
-: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/agent.sh"
+require_agent_credentials
 
 GITLAB_API="${GITLAB_URL}/api/v4"
 WORK_DIR="/workspace/project"
@@ -217,13 +220,19 @@ setup_wiki_config() {
     fi
 }
 
-# Claude API를 사용하여 한글 제목을 영문 slug로 변환
+# Claude provider에서는 API를 사용하여 한글 제목을 영문 slug로 변환
 translate_to_slug() {
     local korean_title="$1"
 
     # 이미 ASCII만 있는 경우 단순 변환
     if echo "$korean_title" | grep -qvP '[^\x00-\x7F]'; then
         echo "$korean_title" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-*//;s/-*$//' | head -c 30
+        return
+    fi
+
+    if [ "$AGENT_PROVIDER" != "claude" ] || [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+        echo "==> Using fallback slug without Claude API translation" >&2
+        echo "issue-${ISSUE_IID}"
         return
     fi
 
@@ -511,7 +520,7 @@ else
         BRANCH_PREFIX="fix"
     fi
 
-    # Claude API로 한글 제목을 영문 slug로 변환
+    # 한글 제목을 영문 slug로 변환
     ISSUE_SLUG=$(translate_to_slug "$ISSUE_TITLE")
     BRANCH_NAME="${BRANCH_PREFIX}/${ISSUE_IID}-${ISSUE_SLUG}"
 
@@ -717,7 +726,7 @@ $([ -n "$RELATED_ISSUES" ] && echo "# 참조된 이슈들" && echo "$RELATED_ISS
 
 $([ -n "$ATTACHMENTS_INFO" ] && echo "# 첨부파일" && echo "$ATTACHMENTS_INFO" && echo "" && echo "**위 파일들은 Read 도구를 사용하여 내용을 확인할 수 있습니다. 텍스트, CSV, Excel, PDF 등의 데이터를 읽고 처리하세요.**")
 
-$([ -n "$SKIPPED_IMAGES" ] && echo "# 스킵된 첨부파일 (이미지)" && echo "$SKIPPED_IMAGES" && echo "" && echo "**ℹ️ 이미지 파일은 Claude API 제한으로 인해 다운로드하지 않았습니다.**" && echo "**이미지 정보가 필요한 경우, 이슈 설명의 텍스트 내용을 참고하세요.**")
+$([ -n "$SKIPPED_IMAGES" ] && echo "# 스킵된 첨부파일 (이미지)" && echo "$SKIPPED_IMAGES" && echo "" && echo "**ℹ️ 이미지 파일은 AI agent 제한으로 인해 다운로드하지 않았습니다.**" && echo "**이미지 정보가 필요한 경우, 이슈 설명의 텍스트 내용을 참고하세요.**")
 
 ---
 
@@ -802,69 +811,67 @@ $([ "$HAS_WIKI" = "true" ] && echo "- docs/ 폴더에 문서 파일 생성 금�
 PROMPT_EOF
 
 # =============================================================================
-# Claude Code 실행
+# Agent 실행
 # =============================================================================
-echo "==> Running Claude Code..."
+AGENT_NAME="$(agent_display_name)"
+echo "==> Running ${AGENT_NAME}..."
+echo "==> Agent provider: ${AGENT_PROVIDER}"
 echo "==> Working directory: $(pwd)"
 
 # 파일에서 읽어서 인자로 전달, 출력 캡처하여 토큰 사용량 추출
-CLAUDE_OUTPUT_FILE="/tmp/claude_output.log"
-CLAUDE_ERROR_FILE="/tmp/claude_error.log"
+AGENT_OUTPUT_FILE="/tmp/${AGENT_PROVIDER}_output.log"
 
-# Claude Code 실행 (exit code 캡처)
+# Agent 실행 (exit code 캡처)
 set +e  # 일시적으로 에러 발생 시 스크립트 중단 비활성화
-claude -p "$(cat /tmp/prompt.txt)" --allowedTools "Bash,Read,Write,Edit,Glob,Grep" --verbose 2>&1 | tee "$CLAUDE_OUTPUT_FILE"
-CLAUDE_EXIT_CODE=$?
+run_agent_cli /tmp/prompt.txt "$AGENT_OUTPUT_FILE"
+AGENT_EXIT_CODE=$?
 set -e  # 다시 활성화
 
 # 실행 실패 시 상세 오류 분석 및 코멘트 작성
-if [ $CLAUDE_EXIT_CODE -ne 0 ]; then
-    echo "ERROR: Claude Code failed with exit code ${CLAUDE_EXIT_CODE}"
+if [ $AGENT_EXIT_CODE -ne 0 ]; then
+    echo "ERROR: ${AGENT_NAME} failed with exit code ${AGENT_EXIT_CODE}"
 
     # 오류 타입 분석
     ERROR_TYPE="unknown"
     ERROR_DETAIL=""
 
     # 토큰 부족 오류
-    if grep -qi "insufficient.*quota\|quota.*exceeded\|usage.*limit" "$CLAUDE_OUTPUT_FILE"; then
+    if grep -qi "insufficient.*quota\|quota.*exceeded\|usage.*limit" "$AGENT_OUTPUT_FILE"; then
         ERROR_TYPE="quota_exceeded"
         ERROR_DETAIL="API 사용량 한도가 초과되었습니다. 잠시 후 다시 시도해주세요."
     # 토큰 제한 오류
-    elif grep -qi "token.*limit\|context.*too.*large\|too.*many.*tokens" "$CLAUDE_OUTPUT_FILE"; then
+    elif grep -qi "token.*limit\|context.*too.*large\|too.*many.*tokens" "$AGENT_OUTPUT_FILE"; then
         ERROR_TYPE="token_limit"
         ERROR_DETAIL="프롬프트가 너무 큽니다. 이슈 설명을 간결하게 줄이거나 첨부파일을 줄여주세요."
     # API 키 오류
-    elif grep -qi "invalid.*api.*key\|authentication.*failed\|unauthorized" "$CLAUDE_OUTPUT_FILE"; then
+    elif grep -qi "invalid.*api.*key\|authentication.*failed\|unauthorized" "$AGENT_OUTPUT_FILE"; then
         ERROR_TYPE="auth_error"
-        ERROR_DETAIL="Claude API 인증에 실패했습니다. API 키를 확인해주세요."
+        ERROR_DETAIL="${AGENT_NAME} API 인증에 실패했습니다. API 키를 확인해주세요."
     # API 오류
-    elif grep -qi "api.*error\|service.*unavailable\|connection.*error" "$CLAUDE_OUTPUT_FILE"; then
+    elif grep -qi "api.*error\|service.*unavailable\|connection.*error" "$AGENT_OUTPUT_FILE"; then
         ERROR_TYPE="api_error"
-        ERROR_DETAIL="Claude API 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요."
+        ERROR_DETAIL="${AGENT_NAME} API 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요."
     # 타임아웃
-    elif grep -qi "timeout\|timed.*out" "$CLAUDE_OUTPUT_FILE"; then
+    elif grep -qi "timeout\|timed.*out" "$AGENT_OUTPUT_FILE"; then
         ERROR_TYPE="timeout"
         ERROR_DETAIL="작업 시간이 초과되었습니다. 이슈를 더 작은 단위로 나누어주세요."
     # 권한 오류
-    elif grep -qi "permission.*denied\|access.*denied" "$CLAUDE_OUTPUT_FILE"; then
+    elif grep -qi "permission.*denied\|access.*denied" "$AGENT_OUTPUT_FILE"; then
         ERROR_TYPE="permission_error"
         ERROR_DETAIL="파일 접근 권한이 없습니다. 저장소 권한을 확인해주세요."
     else
         # 기타 오류: 마지막 몇 줄 추출
-        ERROR_DETAIL=$(tail -20 "$CLAUDE_OUTPUT_FILE" | grep -i "error\|fail\|exception" | head -5 || echo "상세 오류 정보를 확인할 수 없습니다.")
+        ERROR_DETAIL=$(tail -20 "$AGENT_OUTPUT_FILE" | grep -i "error\|fail\|exception" | head -5 || echo "상세 오류 정보를 확인할 수 없습니다.")
     fi
 
     # 토큰 사용량 추출 시도 (여러 패턴)
-    TOKEN_USAGE=$(grep -oP 'Token usage:\s*\K[0-9,]+/[0-9,]+' "$CLAUDE_OUTPUT_FILE" | tail -1 || echo "")
-    [ -z "$TOKEN_USAGE" ] && TOKEN_USAGE=$(grep -oP '[0-9,]+/[0-9,]+(?=\s+tokens?)' "$CLAUDE_OUTPUT_FILE" | tail -1 || echo "")
-    [ -z "$TOKEN_USAGE" ] && TOKEN_USAGE=$(grep -oP '\b[0-9]{4,6}/[0-9]{5,7}\b' "$CLAUDE_OUTPUT_FILE" | tail -1 || echo "")
-    [ -z "$TOKEN_USAGE" ] && TOKEN_USAGE="unknown"
+    TOKEN_USAGE=$(extract_token_usage "$AGENT_OUTPUT_FILE")
 
     # 상세 오류 코멘트 작성
-    ERROR_COMMENT="❌ **Claude Code 실행 실패**
+    ERROR_COMMENT="❌ **${AGENT_NAME} 실행 실패**
 
 **오류 타입**: \`${ERROR_TYPE}\`
-**Exit Code**: ${CLAUDE_EXIT_CODE}
+**Exit Code**: ${AGENT_EXIT_CODE}
 
 **상세 정보**:
 ${ERROR_DETAIL}"
@@ -883,34 +890,16 @@ fi
 
 # 토큰 사용량 추출 (여러 패턴 시도)
 echo "==> Extracting token usage..."
-TOKEN_USAGE="unknown"
-
-# 패턴 1: "Token usage: 15000/200000" 형식
-if [ "$TOKEN_USAGE" = "unknown" ]; then
-    TOKEN_USAGE=$(grep -oP 'Token usage:\s*\K[0-9,]+/[0-9,]+' "$CLAUDE_OUTPUT_FILE" | tail -1 || echo "")
-    [ -z "$TOKEN_USAGE" ] && TOKEN_USAGE="unknown"
-fi
-
-# 패턴 2: "15000/200000 tokens" 형식
-if [ "$TOKEN_USAGE" = "unknown" ]; then
-    TOKEN_USAGE=$(grep -oP '[0-9,]+/[0-9,]+(?=\s+tokens?)' "$CLAUDE_OUTPUT_FILE" | tail -1 || echo "")
-    [ -z "$TOKEN_USAGE" ] && TOKEN_USAGE="unknown"
-fi
-
-# 패턴 3: 단순히 "숫자/숫자" 패턴 (마지막 매칭)
-if [ "$TOKEN_USAGE" = "unknown" ]; then
-    TOKEN_USAGE=$(grep -oP '\b[0-9]{4,6}/[0-9]{5,7}\b' "$CLAUDE_OUTPUT_FILE" | tail -1 || echo "")
-    [ -z "$TOKEN_USAGE" ] && TOKEN_USAGE="unknown"
-fi
+TOKEN_USAGE=$(extract_token_usage "$AGENT_OUTPUT_FILE")
 
 echo "==> Token usage: ${TOKEN_USAGE}"
 
 # 디버깅용: 토큰 관련 라인 출력
 echo "==> Token-related lines in output:"
-grep -i "token\|usage" "$CLAUDE_OUTPUT_FILE" | tail -5 || echo "  (none found)"
+grep -i "token\|usage" "$AGENT_OUTPUT_FILE" | tail -5 || echo "  (none found)"
 
 # =============================================================================
-# 안전장치: Claude가 커밋 빼먹었을 경우 대비
+# 안전장치: Agent가 커밋을 빼먹었을 경우 대비
 # =============================================================================
 echo "==> Checking for uncommitted changes..."
 echo "==> Current directory: $(pwd)"
@@ -938,7 +927,7 @@ echo "==> Current branch: ${CURRENT_BRANCH}"
 echo "==> Expected branch: ${BRANCH_NAME}"
 
 if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "master" ] || [ "$CURRENT_BRANCH" = "develop" ]; then
-    echo "ERROR: Still on ${CURRENT_BRANCH} branch. Claude did not create a feature branch."
+    echo "ERROR: Still on ${CURRENT_BRANCH} branch. Agent did not create a feature branch."
     post_comment "❌ 브랜치 생성에 실패했습니다. 기본 브랜치에서 작업할 수 없습니다."
     exit 1
 fi
@@ -987,7 +976,12 @@ if [ -n "$COMMITS" ]; then
         COMMIT_MSG=$(git log -1 --pretty=format:"%s" "$COMMIT_SHA")
         COMMIT_DIFF=$(git show "$COMMIT_SHA" --format="" --unified=3)
 
-        # Claude에게 커밋 분석 요청 (간단한 프롬프트)
+        if [ "$AGENT_PROVIDER" != "claude" ] || [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "==> Skipping commit AI analysis; Anthropic API is only used in Claude provider mode"
+            continue
+        fi
+
+        # Claude provider에서 커밋 분석 요청 (간단한 프롬프트)
         ANALYSIS_PROMPT="다음 커밋을 분석하고 주요 변경사항을 3줄 이내로 요약하세요. 필요시 mermaid 다이어그램을 사용하세요.
 mermaid 노드 텍스트에 특수문자(/, <, > 등)가 있으면 따옴표로 감싸세요.
 
@@ -1173,7 +1167,7 @@ if [ "$MR_IID" != "null" ] && [ -n "$MR_IID" ]; then
     # Git diff 통계 생성
     DIFF_STATS=$(git diff --stat origin/${BASE_BRANCH}...HEAD 2>/dev/null || echo "통계 정보 없음")
 
-    # Claude API로 위키 업데이트 지시사항 생성
+    # 위키 업데이트 지시사항 생성
     WIKI_INSTRUCTION_PROMPT="다음 MR의 변경사항을 분석하고, 위키 문서 업데이트 지시사항을 작성하세요.
 
 ## MR 정보
@@ -1217,6 +1211,7 @@ ${DIFF_STATS}
 
 지시사항만 출력하세요. 불필요한 페이지는 생략하세요."
 
+    if [ "$AGENT_PROVIDER" = "claude" ] && [ -n "${ANTHROPIC_API_KEY:-}" ]; then
     WIKI_INSTRUCTIONS=$(timeout 30s curl -s --max-time 30 -X POST \
         -H "anthropic-version: 2023-06-01" \
         -H "x-api-key: ${ANTHROPIC_API_KEY}" \
@@ -1233,6 +1228,22 @@ ${DIFF_STATS}
                 }]
             }')" \
         "https://api.anthropic.com/v1/messages" 2>/dev/null | jq -r '.content[0].text // ""' || echo "")
+    else
+        WIKI_INSTRUCTIONS="# MR !${MR_IID} 위키 업데이트 지시사항
+
+## 변경 요약
+MR !${MR_IID} (${ISSUE_TITLE}) 변경사항을 위키에 반영하세요.
+
+## 업데이트 필요 페이지
+
+### Recent-Changes.md
+오늘 날짜와 MR !${MR_IID} 정보를 추가하고, 다음 커밋 내역을 요약하세요:
+${COMMIT_LOG}
+
+## 참고
+변경 파일 통계:
+${DIFF_STATS}"
+    fi
 
     if [ -n "$WIKI_INSTRUCTIONS" ]; then
         echo "==> Saving wiki update instructions to mr/${MR_IID}.md..."

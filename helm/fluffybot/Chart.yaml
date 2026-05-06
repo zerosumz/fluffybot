@@ -7,6 +7,8 @@ appVersion: "1.0.0"
 keywords:
   - gitlab
   - claude
+  - codex
+  - openai
   - ai
   - automation
 maintainers:

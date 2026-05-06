@@ -12,7 +12,10 @@ public class WorkerTask {
     private String projectPath;
     private Long projectId;
     private Long issueIid;
+    private String agentProvider;
     private String anthropicApiKey;
+    private String openaiApiKey;
+    private String codexModel;
     private boolean skipMrCreation;
     @Builder.Default
     private String taskMode = "issue";  // "issue" or "wiki"

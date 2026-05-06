@@ -24,8 +24,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Claude Code CLI
-RUN npm install -g @anthropic-ai/claude-code
+# Agent CLIs
+RUN npm install -g @anthropic-ai/claude-code @openai/codex
 
 # Java 21 (Spring Boot 프로젝트용)
 RUN apt-get update && apt-get install -y openjdk-21-jdk \

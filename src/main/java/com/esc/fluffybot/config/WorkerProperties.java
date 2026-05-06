@@ -17,8 +17,10 @@ public class WorkerProperties {
     @NotBlank
     private String image;
 
-    @NotBlank
+    private String agentProvider = "claude";
     private String anthropicApiKey;
+    private String openaiApiKey;
+    private String codexModel;
 
     private int timeoutMinutes = 30;
 

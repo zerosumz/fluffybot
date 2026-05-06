@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Map;
 
 @Slf4j
@@ -72,6 +73,9 @@ public class WorkerService {
     }
 
     private WorkerTask buildWorkerTask(GitLabWebhookPayload payload, String taskDescription, String taskMode, Long mrIid) {
+        String agentProvider = normalizeAgentProvider(workerProperties.getAgentProvider());
+        validateAgentCredentials(agentProvider);
+
         WorkerTask.WorkerTaskBuilder builder = WorkerTask.builder()
             .gitlabUrl(gitLabProperties.getUrl())
             .gitlabToken(gitLabProperties.getToken())
@@ -79,7 +83,10 @@ public class WorkerService {
             .projectPath(payload.getProject().getPathWithNamespace())
             .projectId(payload.getProject().getId())
             .issueIid(payload.getIssueIid())
+            .agentProvider(agentProvider)
             .anthropicApiKey(workerProperties.getAnthropicApiKey())
+            .openaiApiKey(workerProperties.getOpenaiApiKey())
+            .codexModel(workerProperties.getCodexModel())
             .skipMrCreation(false)
             .taskMode(taskMode)
             .mrIid(mrIid);
@@ -94,6 +101,32 @@ public class WorkerService {
         }
 
         return builder.build();
+    }
+
+    private String normalizeAgentProvider(String provider) {
+        String normalized = provider == null || provider.isBlank()
+            ? "claude"
+            : provider.toLowerCase(Locale.ROOT);
+
+        if (!normalized.equals("claude") && !normalized.equals("codex")) {
+            throw new IllegalArgumentException("AGENT_PROVIDER must be one of: claude, codex");
+        }
+
+        return normalized;
+    }
+
+    private void validateAgentCredentials(String agentProvider) {
+        if (agentProvider.equals("claude") && isBlank(workerProperties.getAnthropicApiKey())) {
+            throw new IllegalArgumentException("ANTHROPIC_API_KEY is required when AGENT_PROVIDER=claude");
+        }
+
+        if (agentProvider.equals("codex") && isBlank(workerProperties.getOpenaiApiKey())) {
+            throw new IllegalArgumentException("OPENAI_API_KEY is required when AGENT_PROVIDER=codex");
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private Job buildJobSpec(String jobName, WorkerTask task) {
@@ -136,7 +169,10 @@ public class WorkerService {
                                 new EnvVar("PROJECT_PATH", task.getProjectPath(), null),
                                 new EnvVar("PROJECT_ID", String.valueOf(task.getProjectId()), null),
                                 new EnvVar("ISSUE_IID", String.valueOf(task.getIssueIid()), null),
-                                new EnvVar("ANTHROPIC_API_KEY", task.getAnthropicApiKey(), null),
+                                new EnvVar("AGENT_PROVIDER", task.getAgentProvider(), null),
+                                new EnvVar("ANTHROPIC_API_KEY", task.getAnthropicApiKey() != null ? task.getAnthropicApiKey() : "", null),
+                                new EnvVar("OPENAI_API_KEY", task.getOpenaiApiKey() != null ? task.getOpenaiApiKey() : "", null),
+                                new EnvVar("CODEX_MODEL", task.getCodexModel() != null ? task.getCodexModel() : "", null),
                                 new EnvVar("SKIP_MR_CREATION", String.valueOf(task.isSkipMrCreation()), null),
                                 new EnvVar("TASK_MODE", task.getTaskMode(), null),
                                 new EnvVar("MR_IID", task.getMrIid() != null ? String.valueOf(task.getMrIid()) : "", null),

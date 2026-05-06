@@ -38,17 +38,28 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secrets.existingSecret }}
                   key: {{ .Values.secrets.gitlabTokenKey }}
+            - name: AGENT_PROVIDER
+              value: {{ ((.Values.agent).provider) | default "claude" | quote }}
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secrets.existingSecret }}
                   key: {{ .Values.secrets.anthropicApiKeyKey }}
+                  optional: true
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: {{ (.Values.secrets).openaiApiKeyKey | default "openai-api-key" }}
+                  optional: true
             - name: GITLAB_BOT_USERNAME
               value: {{ .Values.gitlab.botUsername | quote }}
             - name: WORKER_IMAGE
               value: {{ include "fluffybot.workerImage" . }}
             - name: ANTHROPIC_MODEL
               value: {{ (.Values.anthropic).model | default "claude-sonnet-4-20250514" | quote }}
+            - name: CODEX_MODEL
+              value: {{ (.Values.codex).model | default "" | quote }}
           resources:
             {{- toYaml .Values.webhook.resources | nindent 12 }}
           livenessProbe:

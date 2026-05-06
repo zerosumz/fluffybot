@@ -46,7 +46,8 @@ kubectl create namespace gitlab
 # Secrets 생성
 kubectl create secret generic fluffybot-secrets -n gitlab \
   --from-literal=gitlab-token=glpat-xxxxxxxxxxxxxxxxxxxx \
-  --from-literal=anthropic-api-key=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  --from-literal=anthropic-api-key=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+  --from-literal=openai-api-key=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # values.yaml 설정
 cp helm/fluffybot/values.yaml.example helm/fluffybot/values.yaml
@@ -114,8 +115,10 @@ fluffybot/
 ├── worker/
 │   ├── Dockerfile        # Worker Job 이미지
 │   ├── entrypoint.sh     # Worker Job 메인 진입점
-│   ├── issue-work.sh     # 이슈 작업 처리 스크립트
-│   └── wiki-update.sh    # Wiki 업데이트 스크립트
+│   └── scripts/
+│       ├── agent.sh      # Claude/Codex provider wrapper
+│       ├── issue-work.sh # 이슈 작업 처리 스크립트
+│       └── wiki-update.sh # Wiki 업데이트 스크립트
 ├── helm/fluffybot/       # Helm 차트
 │   ├── templates/        # Kubernetes 리소스 템플릿
 │   └── values.yaml       # 설정 값
@@ -173,8 +176,11 @@ MR이 머지되면 자동으로 Recent-Changes 위키 페이지가 업데이트�
 export GITLAB_URL=https://gitlab.example.com
 export GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
 export GITLAB_BOT_USERNAME=fluffybot
+export AGENT_PROVIDER=claude  # claude 또는 codex, 기본값: claude
 export ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 export ANTHROPIC_MODEL=claude-sonnet-4-20250514  # 선택사항, 기본값: claude-sonnet-4-20250514
+export OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # Codex 모드에서 필요
+# export CODEX_MODEL=<model-name>  # 선택사항, 비우면 Codex CLI 기본값 사용
 export WORKER_IMAGE=registry.example.com/org/fluffybot/worker:latest
 export WORKER_NAMESPACE=gitlab
 
@@ -215,7 +221,8 @@ kubectl create namespace gitlab
 # Secrets 생성
 kubectl create secret generic fluffybot-secrets -n gitlab \
   --from-literal=gitlab-token=glpat-xxxxxxxxxxxxxxxxxxxx \
-  --from-literal=anthropic-api-key=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  --from-literal=anthropic-api-key=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+  --from-literal=openai-api-key=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Registry pull secret 생성 (private registry 사용 시)
 kubectl create secret docker-registry fluffy-registry-secret -n gitlab \
@@ -265,6 +272,22 @@ anthropic:
   model: claude-sonnet-4-20250514  # 원하는 Claude 모델로 변경
 ```
 
+**Codex mode:**
+
+Worker Job에서 Claude Code 대신 OpenAI Codex CLI를 사용하려면 `AGENT_PROVIDER=codex`를 설정하고, 같은 Kubernetes Secret에 `openai-api-key`를 추가합니다. Claude가 기본값이므로 기존 배포는 설정 변경 없이 그대로 동작합니다.
+
+```bash
+kubectl create secret generic fluffybot-secrets -n gitlab \
+  --from-literal=gitlab-token=glpat-xxxxxxxxxxxxxxxxxxxx \
+  --from-literal=openai-api-key=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+helm upgrade fluffybot ./helm/fluffybot -n gitlab \
+  --set agent.provider=codex \
+  -f helm/fluffybot/values.yaml
+```
+
+`CODEX_MODEL`은 선택사항입니다. 특정 Codex 모델을 고정해야 할 때만 `--set codex.model=<model-name>` 또는 `values.yaml`의 `codex.model`을 설정하세요.
+
 #### 3. 업그레이드 및 관리
 
 ```bash
@@ -307,6 +330,14 @@ image:
 # Claude 모델 설정
 anthropic:
   model: claude-sonnet-4-20250514  # 사용할 Claude 모델 지정
+
+# Agent provider 설정
+agent:
+  provider: claude  # claude 또는 codex
+
+# Codex 모델 설정 (선택)
+codex:
+  model: ""  # 비워두면 Codex CLI 기본값 사용
 
 webhook:
   replicas: 2
@@ -377,5 +408,5 @@ This project is licensed under the MIT License.
 
 ## Acknowledgments
 
-- Powered by [Claude Code CLI](https://claude.ai/code)
+- Powered by [Claude Code CLI](https://claude.ai/code) and OpenAI Codex CLI
 - Built with [Anthropic Claude API](https://www.anthropic.com)

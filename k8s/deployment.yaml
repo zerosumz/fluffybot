@@ -29,11 +29,22 @@ spec:
                 secretKeyRef:
                   name: fluffybot-secrets
                   key: gitlab-token
+            - name: AGENT_PROVIDER
+              value: "claude"
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: fluffybot-secrets
                   key: anthropic-api-key
+                  optional: true
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluffybot-secrets
+                  key: openai-api-key
+                  optional: true
+            - name: CODEX_MODEL
+              value: ""
           resources:
             requests:
               cpu: 500m
